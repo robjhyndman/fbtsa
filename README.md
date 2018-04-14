@@ -1,6 +1,6 @@
 # Feature-based time series analysis
 
-## Talk to be given to New York R Meetup on Thursday 21 June 2018
+### Talk to be given to New York R Meetup on Thursday 21 June 2018
 
 It is becoming increasingly common for organizations to collect very large amounts of data over time. Data visualization is essential for exploring and understanding structures and patterns, and to identify unusual observations. However, the sheer quantity of data available means that new time series visualisation methods are needed.
 
