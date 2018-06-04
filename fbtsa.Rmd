@@ -1,0 +1,609 @@
+---
+title: "Feature-based time series analysis"
+author: "Rob J Hyndman"
+date: "21 June 2018"
+fontsize: 14pt
+output:
+  beamer_presentation:
+    fig_height: 5
+    fig_width: 8
+    highlight: tango
+    incremental: no
+    keep_tex: yes
+    theme: metropolis
+    includes:
+      in_header: preamble.tex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, cache=TRUE,
+  dev.args=list(bg=grey(0.9), pointsize=11))
+library(Mcomp)
+library(tsfeatures)
+library(tidyverse)
+library(data.table)
+source("functions.R")
+set.seed(20180605)
+```
+
+# M3 competition
+
+## M3 competition
+\full{M3paper}
+\only<2>{
+\placefig{1}{4}{height=3cm}{SMakridakis}
+\placefig{8.5}{4}{height=3cm}{MHibon}}
+
+## How to plot lots of time series?
+
+```{r m3data}
+scalem3 <- list()
+for(i in 1:3003)
+{
+  scalem3[[i]] <- M3[[i]]$x-min(M3[[i]]$x)
+  scalem3[[i]] <- as.numeric(scalem3[[i]]/max(scalem3[[i]]))
+}
+
+k <- sample(1:3003,3003)
+for(i in 1:200)
+{
+  fname <- paste("M3data",i,sep="")
+  savepdf(fname)
+  plot(0,0,ylim=range(scalem3),xlim=c(0,1),xlab="Time",ylab="",type="n")
+  for(i in 1:i)
+    lines((1:length(scalem3[[k[i]]]))/length(scalem3[[k[i]]]), scalem3[[k[i]]])
+  endpdf()
+}
+savepdf("M3data500")
+plot(0,0,ylim=range(scalem3),xlim=c(0,1),xlab="Time",ylab="",type="n")
+for(i in 1:500)
+  lines((1:length(scalem3[[k[i]]]))/length(scalem3[[k[i]]]), scalem3[[k[i]]])
+endpdf()
+savepdf("M3data1000")
+plot(0,0,ylim=range(scalem3),xlim=c(0,1),xlab="Time",ylab="",type="n")
+for(i in 1:1000)
+  lines((1:length(scalem3[[k[i]]]))/length(scalem3[[k[i]]]), scalem3[[k[i]]])
+endpdf()
+savepdf("M3data2000")
+plot(0,0,ylim=range(scalem3),xlim=c(0,1),xlab="Time",ylab="",type="n")
+for(i in 1:2000)
+  lines((1:length(scalem3[[k[i]]]))/length(scalem3[[k[i]]]), scalem3[[k[i]]])
+endpdf()
+savepdf("M3dataall")
+plot(0,0,ylim=range(scalem3),xlim=c(0,1),xlab="Time",ylab="",type="n")
+for(i in 1:3003)
+  lines((1:length(scalem3[[i]]))/length(scalem3[[i]]), scalem3[[i]])
+endpdf()
+```
+
+\only<1>{\full{M3data1}}
+\only<2>{\full{M3data2}}
+\only<3>{\full{M3data3}}
+\only<4>{\full{M3data4}}
+\only<5>{\full{M3data5}}
+\only<6>{\full{M3data10}}
+\only<7>{\full{M3data20}}
+\only<8>{\full{M3data30}}
+\only<9>{\full{M3data40}}
+\only<10>{\full{M3data50}}
+\only<11>{\full{M3data100}}
+\only<12>{\full{M3data200}}
+\only<13>{\full{M3data500}}
+\only<14>{\full{M3dataall}}
+
+
+## Key idea
+\placefig{9.1}{.5}{width=3.6cm}{tukey}
+\begin{textblock}{3}(9.7,5.4)\small\textit{John W Tukey}\end{textblock}
+\begin{textblock}{8}(0.7,1.2)
+\begin{alertblock}{Cognostics}
+Computer-produced diagnostics\\ (Tukey and Tukey, 1985).
+\end{alertblock}
+\end{textblock}\pause
+\vspace*{2.5cm}
+
+\alert{Examples for time series}
+
+  * lag correlation
+  * size and direction of trend
+  * strength of seasonality
+  * timing of peak seasonality
+  * spectral entropy
+
+\vspace*{0.3cm}
+\begin{block}{}
+Called ``features'' in the machine learning literature.
+\end{block}
+
+
+
+## An STL decomposition: N2096
+\begin{alertblock}{}
+\centerline{$Y_t = S_t + T_t + R_t$\qquad $S_{t}$ is periodic with mean 0}
+\end{alertblock}
+
+```{r stl, fig.height=4.7}
+forecast::mstl(M3[["N2096"]]$x) %>%
+  autoplot() + ylab("") + xlab("")
+```
+
+## Candidate features
+\begin{block}{STL decomposition}
+\centerline{$Y_t = S_t + T_t + R_t$}
+\end{block}\pause\fontsize{13}{15}\sf
+
+* Seasonal period
+* Autocorrelations of data ($Y_1,\dots,Y_T$)
+* Autocorrelations of data ($R_1,\dots,R_T$)
+* Strength of seasonality: $\max\left(0,1 - \frac{\Var(R_t)}{\Var(Y_t-T_t)}\right)$
+* Strength of trend:  $\max\left(0,1 - \frac{\Var(R_t)}{\Var(Y_t-S_t)}\right)$
+* Spectral entropy: $H = - \int_{-\pi}^{\pi} f_y(\lambda) \log f_y(\lambda) d\lambda$, where $f_y(\lambda)$ is spectral density of $Y_t$.\\newline
+Low values of $H$ suggest a time series that is easier to forecast (more signal).
+* Optimal Box-Cox transformation of data
+
+
+# tsfeatures
+
+## Hyndman, Wang and Laptev (ICDM 2015)
+
+```{r yahoo}
+library(tsfeatures)
+library(tidyverse)
+library(anomalous)
+
+# Compute the features used in Hyndman, Wang & Laptev (ICDM 2015).
+# Note that crossing_points, peak and trough are defined differently
+# in the tsfeatures package than in the Hyndman et al (2015) paper.
+# Other features are the same. Using the real data from the paper
+yahoo <- cbind(dat0, dat1, dat2, dat3)
+hwl <- bind_cols(
+         tsfeatures(yahoo,
+           c("acf_features","entropy","lumpiness",
+             "flat_spots","crossing_points")),
+         tsfeatures(yahoo,"stl_features", s.window='periodic', robust=TRUE),
+         tsfeatures(yahoo, "max_kl_shift", width=48),
+         tsfeatures(yahoo,
+           c("mean","var"), scale=FALSE, na.rm=TRUE),
+         tsfeatures(yahoo,
+           c("max_level_shift","max_var_shift"), trim=TRUE)) %>%
+  select(mean, var, x_acf1, trend,
+         seasonal_strength, peak, trough,
+         entropy, lumpiness, spike, max_level_shift, max_var_shift, flat_spots,
+         crossing_points, max_kl_shift, time_kl_shift)
+```
+
+```{r yahoo2, dependson="yahoo"}
+# 2-d Feature space
+prcomp(na.omit(hwl), scale=TRUE)$x %>%
+  as_tibble() %>%
+  ggplot(aes(x=PC1, y=PC2)) +
+    geom_point()
+```
+
+## Kang, Hyndman & Smith-Miles (IJF 2017)
+
+```{r ijf2017}
+library(tsfeatures)
+library(tidyverse)
+library(forecast)
+
+
+# Compute the features used in Kang, Hyndman & Smith-Miles (IJF 2017).
+# Note that the trend and ACF1 are computed differently for non-seasonal
+# data in the tsfeatures package than in the Kang et al (2017).
+# tsfeatures uses mstl() which uses supsmu() for the trend calculation with
+# non-seasonal data, whereas Kang et al used a penalized regression spline
+# computed using mgcv instead.  Other features are the same.
+
+M3data <- purrr::map(Mcomp::M3,
+  function(x){
+      tspx <- tsp(x$x)
+      ts(c(x$x,x$xx), start=tspx[1], frequency=tspx[3])
+  })
+khs_stl <- function(x,...)
+{
+  lambda <- BoxCox.lambda(x, lower=0, upper=1, method='loglik')
+  y <- BoxCox(x, lambda)
+  c(stl_features(y,s.window='periodic', robust=TRUE, ...), lambda=lambda)
+}
+khs <- bind_cols(
+  tsfeatures(M3data, c("frequency", "entropy")),
+  tsfeatures(M3data, "khs_stl", scale=FALSE)) %>%
+  select(frequency, entropy, trend, seasonal_strength, e_acf1, lambda) %>%
+  replace_na(list(seasonal_strength=0)) %>%
+  rename(
+    Frequency = frequency,
+    Entropy = entropy,
+    Trend = trend,
+    Season = seasonal_strength,
+    ACF1 = e_acf1,
+    Lambda = lambda) %>%
+  mutate(Period = as.factor(Frequency))
+```
+
+```{r ijf2017graphs, dependson="ijf2017"}
+# Fig 1 of paper
+khs %>%
+  select(Period, Entropy, Trend, Season, ACF1, Lambda) %>%
+  GGally::ggpairs()
+
+# 2-d Feature space (Top of Fig 2)
+prcomp(select(khs, -Period), scale=TRUE)$x %>%
+  as_tibble() %>%
+  bind_cols(Period=khs$Period) %>%
+  ggplot(aes(x=PC1, y=PC2)) +
+    geom_point(aes(col=Period))
+```
+
+
+
+```{r load}
+load("DT.rda")
+load("qdemand.rda")
+load("jsdmat.rda")
+source("functions.R")
+```
+
+# Irish smart metre data
+
+## Irish smart metre data
+
+\centerline{\includegraphics[width=1.18\linewidth]{SMARTGRID.jpg}}
+  \vspace{-.85cm}
+  \begin{flushright}
+    { \tiny Figure: \url{http://solutions.3m.com}}
+  \end{flushright}\vspace*{-0.4cm}\fontsize{12}{13}\sf
+
+ * 500 households from smart metering trial
+ * Electricity consumption at 30-minute intervals\newline between 14 July 2009 and 31 December 2010
+ * Heating/cooling energy usage excluded
+
+## Irish smart metre data
+
+```{r timeplot1}
+id <- 128
+idlist <- unique(DT[,id])
+if(id <= 500)
+  id <- idlist[id]
+
+# Subset of DT
+j <- (DT[,id]==id)
+z <- DT[j, ]
+z$time <- z$day - 196 + z$period/48
+
+ggplot(aes(y=demand, x=time), data=z) +
+  geom_line() +
+  ylab("Demand (kWh)") + xlab("Days") +
+  ggtitle(paste("Demand for ID:",id)) +
+  guides(fill=FALSE)
+```
+
+## Irish smart metre data
+
+```{r timeplot2}
+id <- 129
+idlist <- unique(DT[,id])
+if(id <= 500)
+  id <- idlist[id]
+
+# Subset of DT
+j <- (DT[,id]==id)
+z <- DT[j, ]
+z$time <- z$day - 196 + z$period/48
+
+ggplot(aes(y=demand, x=time), data=z) +
+  geom_line() +
+  ylab("Demand (kWh)") + xlab("Days") +
+  ggtitle(paste("Demand for ID:",id)) +
+  guides(fill=FALSE)
+```
+
+## Irish smart metre data
+
+```{r timeplot3}
+id <- 12
+idlist <- unique(DT[,id])
+if(id <= 500)
+  id <- idlist[id]
+
+# Subset of DT
+j <- (DT[,id]==id)
+z <- DT[j, ]
+z$time <- z$day - 196 + z$period/48
+
+ggplot(aes(y=demand, x=time), data=z) +
+  geom_line() +
+  ylab("Demand (kWh)") + xlab("Days") +
+  ggtitle(paste("Demand for ID:",id)) +
+  guides(fill=FALSE)
+```
+
+
+# Quantiles conditional on time of week
+
+## Quantiles conditional on time of week
+\fontsize{11}{13}\sf
+
+* Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
+* $336$ probability distributions per household.
+
+```{r timeplot1repeat, fig.height=4.5}
+id <- 128
+idlist <- unique(DT[,id])
+if(id <= 500)
+  id <- idlist[id]
+
+# Subset of DT
+j <- (DT[,id]==id)
+z <- DT[j, ]
+z$time <- z$day - 196 + z$period/48
+
+ggplot(aes(y=demand, x=time), data=z) +
+  geom_line() +
+  ylab("Demand (kWh)") + xlab("Days") +
+  ggtitle(paste("Demand for ID:",id)) +
+  guides(fill=FALSE)
+```
+
+## Quantiles conditional on time of week
+\fontsize{11}{13}\sf
+
+* Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
+* $336$ probability distributions per household.
+
+
+```{r qdemandplot1, fig.height=4.5}
+qdemandplot(128)
+```
+
+## Quantiles conditional on time of week
+\fontsize{11}{13}\sf
+
+* Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
+* $336$ probability distributions per household.
+
+```{r timeplot2repeat, fig.height=4.5}
+id <- 129
+idlist <- unique(DT[,id])
+if(id <= 500)
+  id <- idlist[id]
+
+# Subset of DT
+j <- (DT[,id]==id)
+z <- DT[j, ]
+z$time <- z$day - 196 + z$period/48
+
+ggplot(aes(y=demand, x=time), data=z) +
+  geom_line() +
+  ylab("Demand (kWh)") + xlab("Days") +
+  ggtitle(paste("Demand for ID:",id)) +
+  guides(fill=FALSE)
+```
+
+## Quantiles conditional on time of week
+\fontsize{11}{13}\sf
+
+* Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
+* $336$ probability distributions per household.
+
+```{r qdemandplot2, fig.height=4.5}
+qdemandplot(129)
+```
+
+## Quantiles conditional on time of week
+\fontsize{11}{13}\sf
+
+* Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
+* $336$ probability distributions per household.
+
+```{r timeplot3repeat, fig.height=4.5}
+id <- 12
+idlist <- unique(DT[,id])
+if(id <= 500)
+  id <- idlist[id]
+
+# Subset of DT
+j <- (DT[,id]==id)
+z <- DT[j, ]
+z$time <- z$day - 196 + z$period/48
+
+ggplot(aes(y=demand, x=time), data=z) +
+  geom_line() +
+  ylab("Demand (kWh)") + xlab("Days") +
+  ggtitle(paste("Demand for ID:",id)) +
+  guides(fill=FALSE)
+```
+
+## Quantiles conditional on time of week
+\fontsize{11}{13}\sf
+
+* Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
+* $336$ probability distributions per household.
+
+```{r qdemandplot3, fig.height=4.5}
+qdemandplot(12)
+```
+
+## Quantiles conditional on time of week
+\fontsize{12}{13}\sf
+
+\centerline{\includegraphics[width=9.8cm]{quantileplot}}
+
+> - Sample quantiles better than kernel density estimate:
+\begin{itemize}
+       \item presence of zeros
+       \item non-negative support
+       \item high skewness
+\end{itemize}
+> - Avoids missing data issues and variation in series length
+> - Avoids timing of household events, holidays, etc.
+> - Allows clustering of households based on probabilistic behaviour rather than coincident behaviour.
+> - Allows identification of anomalous households.
+> - Allows estimation of typical household behaviour.
+
+# Finding typical and unusual households
+
+## Pairwise distances
+
+\placefig{0.1}{1.5}{width=5.5cm, height=1.8cm, keepaspectratio=false}{timeplot}
+\placefig{7.2}{1.5}{width=5.5cm, height=1.8cm, keepaspectratio=false}{quantileplot}
+\begin{textblock}{3}(5.7,2.2)\LARGE
+$\longrightarrow$
+\end{textblock}
+\vspace*{.9cm}\fontsize{13}{15}\sf
+
+ * The time series of $535\times48$ observations per household is mapped to a set of $7\times48\times99$ quantiles giving a bivariate surface for each household.
+
+ * Can we compute pairwise distances between all households?
+
+\placefig{0.1}{7.5}{width=5.5cm, height=1.8cm, keepaspectratio=false}{quantileplot}
+\placefig{7.2}{7.5}{width=5.5cm, height=1.8cm, keepaspectratio=false}{quantile2plot}
+\begin{textblock}{1.48}(5.65,8.2)
+$\leftarrow\hfill~?\hfill\rightarrow$\\\fontsize{11}{12}\sf
+\hfill Distance \hfill
+\end{textblock}
+
+
+## Jensen-Shannon distances
+
+\begin{block}{Kullback-Leibler divergence between two densities}
+$$D(p,q) = \int_{\infty}^\infty p(x) \log \frac{p(x)}{q(x)} dx$$
+\vspace*{-0.2cm}\pause
+
+Not symmetric: $D(p,q) \neq D(q,p)$
+\end{block}
+\pause
+
+\begin{block}{Jensen-Shannon distance between two densities}
+$$\text{JS}(p,q) =  [ D(p,r) +  D(q,r)] / 2\qquad\text{where~~}
+r = (p+q)/2$$
+\end{block}
+\pause
+
+\begin{block}{Distance between two households}
+$$\Delta_{ij} = \sum_{t=1}^{7\times 48} \text{JS}(p_t,q_t)$$
+\end{block}
+
+## Kernel matrix and density ranking
+
+\begin{block}{Similarity between two households}
+$$
+  w_{ij} = \exp(-\Delta_{ij}^2/h^2).
+$$
+\end{block}\pause
+
+Row sums of the kernel matrix gives a scaled kernel density estimate of households:
+\begin{block}{}
+$$  \hat{f}_i = \sum_{j=1}^n w_{ij}$$
+\end{block}
+
+ * $h$ is bandwidth in Gaussian kernel.
+ * Households can be ranked by density values.
+
+## Typical households
+
+```{r typical}
+elecembed <- embedding(jsdmat, m=2)
+# Look at modal observations
+fxyhi <- kdedist(elecembed$distances, bandwidth=1e5)
+mode1 <- order(fxyhi,decreasing=TRUE)[1]
+mode2 <- order(fxyhi,decreasing=TRUE)[2]
+mode3 <- order(fxyhi,decreasing=TRUE)[3]
+qdemandplot(mode1)
+```
+
+## Typical households
+
+```{r mode2}
+qdemandplot(mode2)
+```
+
+## Typical households
+
+```{r mode3}
+qdemandplot(mode3)
+```
+
+## Anomalous households
+
+```{r outlier1}
+outlier1 <- order(fxyhi,decreasing=FALSE)[1]
+qdemandplot(outlier1)
+```
+
+## Anomalous households
+
+```{r outlier2}
+outlier2 <- order(fxyhi,decreasing=FALSE)[2]
+qdemandplot(outlier2)
+```
+
+## Anomalous households
+
+```{r outlier3}
+outlier3 <- order(fxyhi,decreasing=FALSE)[3]
+qdemandplot(outlier3)
+```
+
+# Visualization via embedding
+
+## Laplacian eigenmaps
+\fontsize{13}{15}\sf
+
+> - **Idea:** Embed conditional densities in a 2d space where the distances are preserved "as far as possible".
+> -
+ \begin{align*}
+ \\[-1.36cm]
+ \text{Let}\quad
+   \bm{W} &=[w_{ij}] &&\text{~~ where~}w_{ij} = \exp(-\Delta_{ij}^2/h^2).\\
+   \bm{D} &= \text{diag}(\hat{f}_i) &&\text{~~ where~}\hat{f}_i = \sum_{j=1}^n w_{ij}\\
+   \bm{L} &=\bm{D}-\bm{W} &&\text{~~ (the Laplacian matrix).}\hspace{5cm}
+ \end{align*}
+> - Solve generalized eigenvector problem: $\bm{L}\bm{e} = \lambda \bm{D}\bm{e}$.
+> - Let $\bm{e}_k$ be eigenvector corresponding to $k$th \emph{smallest} eigenvalue.
+> - Then $\bm{e}_2$ and $\bm{e}_3$ create an embedding of households in 2d space.
+
+## Key property of Laplacian embedding
+
+Let $y_i = (e_{2,i},e_{3,i})$ be the embedded point corresponding to household $i$.
+
+\begin{block}{}
+Then the Laplacian eigenmap minimizes
+$$
+  \sum_{ij} w_{ij}(y_i-y_j)^2 = \bm{y}'\bm{L}\bm{y} \qquad\text{such that}\quad
+\bm{y}'\bm{D}\bm{y}=1.
+$$
+\end{block}\pause
+
+ > - the most similar points are as close as possible.
+ > - First eigenvalue is 0 due to translation invariance.
+ > - Equivalent to optimal embedding using Laplace-Beltrami operator on manifolds.
+
+
+## Outliers computed in embedded space:
+
+```{r}
+#plot(elecembed, embedded=TRUE, noutliers=3) +
+#  xlim(-2.7,1.9) +
+#  ggtitle("Laplacian embedding (HDRs on embedded space)")
+```
+
+# Features and limitations
+
+## Features and limitations
+\fontsize{12}{13}\sf
+
+\begin{block}{Features of approach}
+\begin{itemize}
+ \item Converting time series to quantile surfaces conditional on time of week.
+ \item Using pairwise distances between households
+ \item Using kernel matrices for density ranking, embedding and clustering
+\end{itemize}
+\end{block}\pause
+
+**Unresolved issues**
+
+* Need to select the bandwidth $h$ in constructing the similarity matrix.
+* Two different uses of bandwidth: density-ranking, embedding. Different bandwidth in each case?
+* The use of pairwise distances makes it hard to scale this algorithm.
+
