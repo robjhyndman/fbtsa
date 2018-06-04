@@ -153,18 +153,22 @@ M3data <- purrr::map(Mcomp::M3,
 
 ```
 
+\fontsize{9}{9}\sf
+
 ```{r ijf2017, echo=TRUE}
 library(tsfeatures)
-lambda_stl <- function(x,...)
-{
-  lambda <- forecast::BoxCox.lambda(x, lower=0, upper=1, method='loglik')
+lambda_stl <- function(x,...) {
+  lambda <- forecast::BoxCox.lambda(x,
+    lower=0, upper=1, method='loglik')
   y <- forecast::BoxCox(x, lambda)
-  c(stl_features(y,s.window='periodic', robust=TRUE, ...), lambda=lambda)
+  c(stl_features(y,s.window='periodic', robust=TRUE, ...),
+    lambda=lambda)
 }
 M3Features <- bind_cols(
   tsfeatures(M3data, c("frequency", "entropy")),
   tsfeatures(M3data, "lambda_stl", scale=FALSE)) %>%
-  select(frequency, entropy, trend, seasonal_strength, e_acf1, lambda) %>%
+  select(frequency, entropy, trend, seasonal_strength,
+    e_acf1, lambda) %>%
   replace_na(list(seasonal_strength=0)) %>%
   rename(
     Frequency = frequency,
