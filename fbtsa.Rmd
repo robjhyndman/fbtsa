@@ -22,11 +22,12 @@ library(Mcomp)
 library(tsfeatures)
 library(tidyverse)
 library(data.table)
+library(GGally)
 source("functions.R")
 set.seed(20180605)
 ```
 
-# M3 competition
+# Time series feature spaces
 
 ## M3 competition
 \full{M3paper}
@@ -141,8 +142,111 @@ forecast::mstl(M3[["N2096"]]$x) %>%
 Low values of $H$ suggest a time series that is easier to forecast (more signal).
 * Optimal Box-Cox transformation of data
 
+## tsfeatures package
 
-# tsfeatures
+```{r m3datalist, include=FALSE}
+M3data <- purrr::map(Mcomp::M3,
+  function(x){
+      tspx <- tsp(x$x)
+      ts(c(x$x,x$xx), start=tspx[1], frequency=tspx[3])
+  })
+
+```
+
+```{r ijf2017, echo=TRUE}
+library(tsfeatures)
+lambda_stl <- function(x,...)
+{
+  lambda <- forecast::BoxCox.lambda(x, lower=0, upper=1, method='loglik')
+  y <- forecast::BoxCox(x, lambda)
+  c(stl_features(y,s.window='periodic', robust=TRUE, ...), lambda=lambda)
+}
+M3Features <- bind_cols(
+  tsfeatures(M3data, c("frequency", "entropy")),
+  tsfeatures(M3data, "lambda_stl", scale=FALSE)) %>%
+  select(frequency, entropy, trend, seasonal_strength, e_acf1, lambda) %>%
+  replace_na(list(seasonal_strength=0)) %>%
+  rename(
+    Frequency = frequency,
+    Entropy = entropy,
+    Trend = trend,
+    Season = seasonal_strength,
+    ACF1 = e_acf1,
+    Lambda = lambda) %>%
+  mutate(Period = as.factor(Frequency))
+```
+
+## Distribution of Period for M3
+
+```{r M3period}
+ggally_barDiag(M3Features,
+               mapping = aes(Period), width=0.2,
+               colour="#cc5900", fill="#cc5900")
+```
+
+## Distribution of Seasonality for M3
+
+```{r M3season}
+gghist(M3Features, aes_string("Season"))
+```
+
+## Distribution of Trend for M3
+
+```{r M3trend}
+gghist(M3Features, aes_string("Trend"))
+```
+
+## Distribution of Residual ACF1 for M3
+
+```{r M3ACF1}
+gghist(M3Features, aes_string("ACF1"))
+```
+
+## Distribution of Spectral Entropy for M3
+
+```{r M3entropy}
+gghist(M3Features, aes_string("Entropy"))
+```
+
+## Feature distributions
+
+```{r ACF1SE}
+ggplot(M3Features, aes(x=Entropy,y=ACF1)) + geom_point()
+```
+
+## Feature distributions
+
+```{r TrendSE}
+ggplot(M3Features, aes(x=Entropy,y=Trend)) + geom_point()
+```
+
+## Feature distributions
+
+```{r ijf2017graphs, dependson="ijf2017"}
+# Fig 1 of paper
+yk_ggally_densityDiag <- wrap(gghist, adjust = 0.5)
+yk_ggally_barDiag <-  wrap(ggally_barDiag, colour="#cc5900",
+                           fill ="#cc5900", width = 0.2)
+M3Features %>%
+  select(Period, Entropy, Trend, Season, ACF1, Lambda) %>%
+  ggpairs(diag = list(continuous = yk_ggally_densityDiag,
+                      discrete = yk_ggally_barDiag),
+          axisLabels = "none",
+          lower=list(continuous = wrap("points", alpha = 0.5,  size=0.2)))
+```
+
+## Feature distributions
+
+```{r m3pca}
+# 2-d Feature space (Top of Fig 2)
+prcomp(select(M3Features, -Period), scale=TRUE)$x %>%
+  as_tibble() %>%
+  bind_cols(Period=M3Features$Period) %>%
+  ggplot(aes(x=PC1, y=PC2)) +
+    geom_point(aes(col=Period))
+```
+
+
 
 ## Hyndman, Wang and Laptev (ICDM 2015)
 
@@ -180,61 +284,7 @@ prcomp(na.omit(hwl), scale=TRUE)$x %>%
     geom_point()
 ```
 
-## Kang, Hyndman & Smith-Miles (IJF 2017)
-
-```{r ijf2017}
-library(tsfeatures)
-library(tidyverse)
-library(forecast)
-
-
-# Compute the features used in Kang, Hyndman & Smith-Miles (IJF 2017).
-# Note that the trend and ACF1 are computed differently for non-seasonal
-# data in the tsfeatures package than in the Kang et al (2017).
-# tsfeatures uses mstl() which uses supsmu() for the trend calculation with
-# non-seasonal data, whereas Kang et al used a penalized regression spline
-# computed using mgcv instead.  Other features are the same.
-
-M3data <- purrr::map(Mcomp::M3,
-  function(x){
-      tspx <- tsp(x$x)
-      ts(c(x$x,x$xx), start=tspx[1], frequency=tspx[3])
-  })
-khs_stl <- function(x,...)
-{
-  lambda <- BoxCox.lambda(x, lower=0, upper=1, method='loglik')
-  y <- BoxCox(x, lambda)
-  c(stl_features(y,s.window='periodic', robust=TRUE, ...), lambda=lambda)
-}
-khs <- bind_cols(
-  tsfeatures(M3data, c("frequency", "entropy")),
-  tsfeatures(M3data, "khs_stl", scale=FALSE)) %>%
-  select(frequency, entropy, trend, seasonal_strength, e_acf1, lambda) %>%
-  replace_na(list(seasonal_strength=0)) %>%
-  rename(
-    Frequency = frequency,
-    Entropy = entropy,
-    Trend = trend,
-    Season = seasonal_strength,
-    ACF1 = e_acf1,
-    Lambda = lambda) %>%
-  mutate(Period = as.factor(Frequency))
-```
-
-```{r ijf2017graphs, dependson="ijf2017"}
-# Fig 1 of paper
-khs %>%
-  select(Period, Entropy, Trend, Season, ACF1, Lambda) %>%
-  GGally::ggpairs()
-
-# 2-d Feature space (Top of Fig 2)
-prcomp(select(khs, -Period), scale=TRUE)$x %>%
-  as_tibble() %>%
-  bind_cols(Period=khs$Period) %>%
-  ggplot(aes(x=PC1, y=PC2)) +
-    geom_point(aes(col=Period))
-```
-
+# Irish smart metre data
 
 
 ```{r load}
@@ -244,7 +294,6 @@ load("jsdmat.rda")
 source("functions.R")
 ```
 
-# Irish smart metre data
 
 ## Irish smart metre data
 

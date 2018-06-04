@@ -25,7 +25,7 @@ M3Features$Period= as.factor(M3Features$Period)
 # Histograms
 gghist <- function(data, mapping, ...)
 {
-  x <- data[,as.character(mapping$x)]
+  x <- data[,as.character(mapping$x[2])]
   bw <- 0.2*bw.nrd0(x) + 0.8*bw.SJ(x)
   p <- ggplot(data, mapping) +
     geom_density(col=NA, fill="#cc5900", bw=bw)

@@ -13,6 +13,17 @@ endpdf <- function()
   crop::dev.off.crop(fname)
 }
 
+# Histograms
+gghist <- function(data, mapping, ...)
+{
+  x <- data[[as.character(mapping$x[2])]]
+  bw <- 0.2*bw.nrd0(x) + 0.8*bw.SJ(x)
+  p <- ggplot(data, mapping) +
+    geom_density(col=NA, fill="#cc5900", bw=bw)
+  return(p)
+}
+
+
 # Produce plot of data and quantiles for electricity example
 # To save passing large objects as arguments, this treats DT and qdemand
 # as global variables
