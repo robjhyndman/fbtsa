@@ -1,3 +1,10 @@
 fbtsa_cache
 fbtsa_files
 fbtsa.tex
+*.aux
+*.nav
+*.out
+*.snm
+*.toc
+*.vrb
+

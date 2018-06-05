@@ -479,10 +479,10 @@ plot.embedding <- function(embed,
 
 annotatedplot <- function(data, mapping, outliers=NULL, labels=NULL, region=NULL, textsize=2.5,...)
 {
-  xvar <- as.character(mapping$x)
-  yvar <- as.character(mapping$y)
-  xlim <- diff(range(data[,xvar]))
-  ylim <- diff(range(data[,yvar]))
+  xvar <- as.character(mapping$x)[2]
+  yvar <- as.character(mapping$y)[2]
+  xlim <- diff(range(data[[xvar]]))
+  ylim <- diff(range(data[[yvar]]))
 
   if(!is.null(region))
   {
@@ -511,7 +511,7 @@ annotatedplot <- function(data, mapping, outliers=NULL, labels=NULL, region=NULL
   {
     if(is.null(labels))
       labels <- rownames(data)[outliers]
-    p <- p + ggplot2::annotate("text", x = data[outliers,xvar]+xlim/50, y=data[outliers,yvar]+ylim/50,
+    p <- p + ggplot2::annotate("text", x = data[[xvar]][outliers]+xlim/50, y=data[[yvar]][outliers]+ylim/50,
                                label=labels, col='blue', cex=textsize)
   }
   return(p)

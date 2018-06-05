@@ -28,7 +28,7 @@ source("ggbiplot.R")
 set.seed(20180605)
 ```
 
-# Time series feature spaces
+# M3 forecasting competition
 
 ## M3 competition
 \full{M3paper}
@@ -93,7 +93,6 @@ endpdf()
 \only<13>{\full{M3data500}}
 \only<14>{\full{M3dataall}}
 
-
 ## Key idea
 \placefig{9.1}{.5}{width=3.6cm}{tukey}
 \begin{textblock}{3}(9.7,5.4)\small\textit{John W Tukey}\end{textblock}
@@ -116,8 +115,6 @@ Computer-produced diagnostics\\ (Tukey and Tukey, 1985).
 \begin{block}{}
 Called ``features'' in the machine learning literature.
 \end{block}
-
-
 
 ## An STL decomposition: N2096
 \begin{alertblock}{}
@@ -357,6 +354,7 @@ prcomp(select(M3Features, -Period), scale=TRUE)$x %>%
   as_tibble() %>%
   bind_cols(M3Features) %>%
   ggplot(aes(x=PC1, y=PC2)) + 
+    coord_equal(ratio = 1)  +
     geom_point() -> p
 savepdf("FeatureSpace", height=13, width=13)
 print(p)
@@ -365,7 +363,7 @@ endpdf()
 
 \only<1->{\placefig{0}{1}{width=4cm,height=8.3cm,trim=0 0 200 0,clip=TRUE}{M3sample}}
 \only<2->{\placefig{6}{1}{width=6cm}{PairwisePlot}}
-\only<3>{\placefig{5.2}{5.2}{width=4cm}{FeatureSpace}}
+\only<3>{\placefig{5.2}{5.3}{width=5cm}{FeatureSpace}}
 
 \only<2->{\placefig{4}{2}{width=2cm}{arrow}}
 \only<3>{\placefig{8.4}{4.2}{width=2cm,angle=-90}{arrow}}
@@ -383,24 +381,18 @@ Principal component decomposition
 \end{textblock}}
 
 ## M3 feature space
-\fontsize{12}{13}\sf
+\fontsize{11}{11}\sf
 
 ```r
 prcomp(select(M3Features, -Period), scale=TRUE)$x %>%
   ggplot(aes(x=PC1, y=PC2))
 ```
+
 \vspace*{-0.2cm}
 
-```{r m3pca0, dependson="m3pca", fig.height=3.6, fig.width=3.6}
-p
-```
+\includegraphics[width=8.2cm]{FeatureSpace}
 
-
-\begin{textblock}{1}(7,9.2)
-\textcolor{black}{PC1}
-\end{textblock}
-
-\begin{textblock}{3}(9,3)
+\begin{textblock}{4}(8,3)
 \begin{block}{}\fontsize{12}{13}\sf
 First two PCs explain 58.5\% of the variance.
 \end{block}
@@ -415,8 +407,9 @@ prcomp(select(M3Features, -Period), scale=TRUE) %>%
 
 ## M3 feature space
 
-```{r m3pca1, dependson="m3pca", fig.width=5.5, fig.height=4.5}
- p + geom_point(aes(col=Period))
+```{r m3pca1, dependson="m3pca", fig.width=6, fig.height=4.5}
+ p + geom_point(aes(col=Period)) +
+    coord_equal(ratio = 1) 
 ```
 
 ## Papers and packages
@@ -427,9 +420,9 @@ prcomp(select(M3Features, -Period), scale=TRUE) %>%
   \rlap{\url{github.com/robjhyndman/tsfeatures/}}
 \end{tabular}
 
-# Finding anomalies
+# Yahoo email servers
 
-## Yahoo web-traffic 
+## Yahoo email servers
 \fontsize{13}{15}\sf\vspace*{-0.2cm}
 
   * Tens of thousands of time series collected at one-hour intervals over one month.
@@ -439,17 +432,21 @@ prcomp(select(M3Features, -Period), scale=TRUE) %>%
 \placefig{0}{4.6}{width=13.7cm, trim=0 20 0 220, clip=TRUE}{serverfarm}
 \vspace*{10cm}
 
-## Yahoo web-traffic 
-\centerline{\includegraphics[width=4.3cm, clip=true, trim=30 10 20 0, height=8cm]{busy_eg.pdf}
-\includegraphics[width=4.3cm, clip=true, trim=30 10 20 0, height=8cm]{memory_eg.pdf}
-\includegraphics[width=4.3cm, clip=true, trim=30 10 20 0, height=8cm]{page_eg.pdf}}
+## Yahoo email servers
+\vspace*{0.2cm}\par
 
-## Feature space
-\fontsize{10}{11}\sf\vspace*{-0.2cm}
+\only<1>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true, 
+clip=true,trim=40 0 0 0]{busy_eg}}}
+\only<2>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true, 
+clip=true,trim=40 0 0 0]{memory_eg}}}
+\only<3>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true, 
+clip=true,trim=40 0 0 0]{page_eg}}}
 
-* \textbf{ACF1}: first order autocorrelation = $\text{Corr}(Y_t,Y_{t-1})$
+## Yahoo email servers
+\fontsize{11}{11.8}\sf\vspace*{-0.2cm}
+
+* **ACF1**: first order autocorrelation = $\text{Corr}(Y_t,Y_{t-1})$
 * Strength of **trend** and **seasonality** based on STL
-* Trend **linearity** and **curvature**
 * Size of seasonal **peak** and **trough**
 * Spectral **entropy**
 * **Lumpiness**: variance of block variances (block size 24).
@@ -464,37 +461,39 @@ prcomp(select(M3Features, -Period), scale=TRUE) %>%
        consecutive windows of size 48.
 * **Change index**: Time of maximum KL score
 
+## Feature space
+\fontsize{10}{10}\sf
 
-
-## What is ``anomalous''?
-
- * We need a measure of the ``anomalousness'' of a time series.
- * Idea: We rank points based on their local density using a bivariate kernel density estimate.
-
-## Bivariate kernel density
-\begin{block}{}
-  \begin{equation*}
-    \hat{f}(\x; \H) = \frac{1}{n}\sum_{i=1}^n K_{\H}(\x - \X_i)
-  \end{equation*}
-\end{block}
-
-  * $\X_i \in$ a bivariate random sample $\{\X_1, \X_2, \ldots, \X_n\}$
-  * $K_{\H}(\x)$ is the standard normal kernel function
-  * $\H$ estimated by minimizing the sum of AMISE
-  * Rank points based on $\hat{f}$ values in 2d PCA space.
-
-
-## Hyndman, Wang and Laptev (ICDM 2015)
-
-```{r yahoo}
+```r
 library(tsfeatures)
 library(tidyverse)
 library(anomalous)
+yahoo <- cbind(dat0, dat1, dat2, dat3)
+hwl <- bind_cols(
+         tsfeatures(yahoo,
+           c("acf_features","entropy","lumpiness",
+             "flat_spots","crossing_points")),
+         tsfeatures(yahoo,"stl_features", 
+         	    s.window='periodic', robust=TRUE),
+         tsfeatures(yahoo, "max_kl_shift", width=48),
+         tsfeatures(yahoo,
+           c("mean","var"), scale=FALSE, na.rm=TRUE),
+         tsfeatures(yahoo,
+           c("max_level_shift","max_var_shift"), trim=TRUE)) %>%
+  select(mean, var, x_acf1, trend,
+         seasonal_strength, peak, trough,
+         entropy, lumpiness, spike, max_level_shift, 
+         max_var_shift, flat_spots, crossing_points, 
+         max_kl_shift, time_kl_shift)
+```
 
-# Compute the features used in Hyndman, Wang & Laptev (ICDM 2015).
-# Note that crossing_points, peak and trough are defined differently
-# in the tsfeatures package than in the Hyndman et al (2015) paper.
-# Other features are the same. Using the real data from the paper
+## Feature space
+\fontsize{11}{11}\sf
+
+```{r yahoo, fig.height=4, fig.width=4}
+library(tsfeatures)
+library(tidyverse)
+library(anomalous)
 yahoo <- cbind(dat0, dat1, dat2, dat3)
 hwl <- bind_cols(
          tsfeatures(yahoo,
@@ -513,15 +512,89 @@ hwl <- bind_cols(
 ```
 
 ```{r yahoo2, dependson="yahoo"}
-# 2-d Feature space
-prcomp(na.omit(hwl), scale=TRUE)$x %>%
-  as_tibble() %>%
-  ggplot(aes(x=PC1, y=PC2)) +
+pc <- prcomp(na.omit(hwl), scale=TRUE)$x %>%
+  as_tibble()
+p <- ggplot(pc, aes(x=PC1, y=PC2)) + 
+    coord_equal(ratio = 1)  +
     geom_point()
+savepdf("YahooFeatureSpace", height=13, width=13)
+print(p)
+endpdf()
 ```
 
-# Irish smart metre data
+```r
+pc <- prcomp(na.omit(hwl), scale=TRUE)$x %>% as_tibble()
+ggplot(pc, aes(x=PC1, y=PC2)) + geom_point()
+```
 
+\vspace*{-0.2cm}
+
+\includegraphics[width=5.8cm]{YahooFeatureSpace}
+
+\begin{textblock}{5}(7,3)
+\begin{alertblock}{What is ``anomalous''?}
+\begin{itemize}\tightlist
+\item We need a measure of the ``anomalousness'' of a time series.
+\item Rank points based on their local density using a bivariate kernel density estimate.
+\end{itemize}
+\end{alertblock}
+\end{textblock}
+
+## Finding weird time series
+\fontsize{10}{10}\sf
+
+```{r hdryahoo, dependson="yahoo", fig.height=4, fig.width=6.66}
+library(hdrcde)
+savepdf("HDRYahoo", width=13, height=13)
+hdrscatterplot(pc[,1], pc[,2], noutliers=5) + coord_equal(ratio=1) +
+  xlab("PC1") + ylab("PC2")
+endpdf()
+```
+
+```r
+hdrcde::hdrscatterplot(pc[,1], pc[,2], noutliers=5)
+```
+
+\vspace*{-0.25cm}
+\includegraphics[width=7.5cm]{HDRYahoo}
+
+\begin{textblock}{4.8}(7.7,6.9)\fontsize{10}{10}\sf
+\begin{alertblock}{\fontsize{10}{10}\sffamily Highest Density Regions}
+\begin{itemize}\tightlist
+\item Estimate using \texttt{hdrcde} package
+\item Highlight outlying points as those with lowest density.
+\end{itemize}
+\end{alertblock}
+\end{textblock}
+
+## Stray algorithm
+
+```{r stray, echo=TRUE}
+library(stray)
+find_HDoutliers(hwl)
+```
+
+ * Uses extreme value theory applied to nearest neighbour distances between observations.
+ * Works directly on high-dimensional data (no need to do PCA).
+ * Modification of HDoutliers algorithm of Lee Wilkinson (HDoutliers package).
+
+\placefig{10}{0.1}{width=2.5cm}{straysticker}
+
+
+## Stray algorithm
+
+```{r stray2, dependson='stray'}
+outliers <- find_HDoutliers(na.omit(hwl))
+autoplot(yahoo[,outliers[1]]) + ylab("") + ggtitle(paste("Series",outliers[1]))
+```
+
+\only<2>{\begin{textblock}{4.5}(8,7)
+	\begin{alertblock}{}
+	Some of my features might be sensitive to missing values.
+	\end{alertblock}
+	\end{textblock}}
+
+# Irish smart metres
 
 ```{r load}
 load("DT.rda")
@@ -529,7 +602,6 @@ load("qdemand.rda")
 load("jsdmat.rda")
 source("functions.R")
 ```
-
 
 ## Irish smart metre data
 
@@ -547,26 +619,6 @@ source("functions.R")
 
 ```{r timeplot1}
 id <- 128
-idlist <- unique(DT[,id])
-if(id <= 500)
-  id <- idlist[id]
-
-# Subset of DT
-j <- (DT[,id]==id)
-z <- DT[j, ]
-z$time <- z$day - 196 + z$period/48
-
-ggplot(aes(y=demand, x=time), data=z) +
-  geom_line() +
-  ylab("Demand (kWh)") + xlab("Days") +
-  ggtitle(paste("Demand for ID:",id)) +
-  guides(fill=FALSE)
-```
-
-## Irish smart metre data
-
-```{r timeplot2}
-id <- 129
 idlist <- unique(DT[,id])
 if(id <= 500)
   id <- idlist[id]
@@ -603,9 +655,6 @@ ggplot(aes(y=demand, x=time), data=z) +
   guides(fill=FALSE)
 ```
 
-
-# Quantiles conditional on time of week
-
 ## Quantiles conditional on time of week
 \fontsize{11}{13}\sf
 
@@ -636,43 +685,8 @@ ggplot(aes(y=demand, x=time), data=z) +
 * Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
 * $336$ probability distributions per household.
 
-
 ```{r qdemandplot1, fig.height=4.5}
 qdemandplot(128)
-```
-
-## Quantiles conditional on time of week
-\fontsize{11}{13}\sf
-
-* Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
-* $336$ probability distributions per household.
-
-```{r timeplot2repeat, fig.height=4.5}
-id <- 129
-idlist <- unique(DT[,id])
-if(id <= 500)
-  id <- idlist[id]
-
-# Subset of DT
-j <- (DT[,id]==id)
-z <- DT[j, ]
-z$time <- z$day - 196 + z$period/48
-
-ggplot(aes(y=demand, x=time), data=z) +
-  geom_line() +
-  ylab("Demand (kWh)") + xlab("Days") +
-  ggtitle(paste("Demand for ID:",id)) +
-  guides(fill=FALSE)
-```
-
-## Quantiles conditional on time of week
-\fontsize{11}{13}\sf
-
-* Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
-* $336$ probability distributions per household.
-
-```{r qdemandplot2, fig.height=4.5}
-qdemandplot(129)
 ```
 
 ## Quantiles conditional on time of week
@@ -714,19 +728,15 @@ qdemandplot(12)
 
 \centerline{\includegraphics[width=9.8cm]{quantileplot}}
 
-> - Sample quantiles better than kernel density estimate:
-\begin{itemize}
-       * presence of zeros
-       * non-negative support
-       * high skewness
-\end{itemize}
-> - Avoids missing data issues and variation in series length
-> - Avoids timing of household events, holidays, etc.
-> - Allows clustering of households based on probabilistic behaviour rather than coincident behaviour.
-> - Allows identification of anomalous households.
-> - Allows estimation of typical household behaviour.
-
-# Finding typical and unusual households
+ - Sample quantiles better than kernel density estimate:
+      * presence of zeros
+      * non-negative support
+      * high skewness
+ - Avoids missing data issues and variation in series length
+ - Avoids timing of household events, holidays, etc.
+ - Allows clustering of households based on probabilistic behaviour rather than coincident behaviour.
+ - Allows identification of anomalous households.
+ - Allows estimation of typical household behaviour.
 
 ## Pairwise distances
 
@@ -748,44 +758,31 @@ $\leftarrow\hfill~?\hfill\rightarrow$\\\fontsize{11}{12}\sf
 \hfill Distance \hfill
 \end{textblock}
 
+## Pairwise distances
+\fontsize{14}{15}\sf
 
-## Jensen-Shannon distances
-
-\begin{block}{Kullback-Leibler divergence between two densities}
-$$D(p,q) = \int_{\infty}^\infty p(x) \log \frac{p(x)}{q(x)} dx$$
-\vspace*{-0.2cm}\pause
-
-Not symmetric: $D(p,q) \neq D(q,p)$
-\end{block}
-\pause
-
-\begin{block}{Jensen-Shannon distance between two densities}
-$$\text{JS}(p,q) =  [ D(p,r) +  D(q,r)] / 2\qquad\text{where~~}
-r = (p+q)/2$$
-\end{block}
-\pause
-
-\begin{block}{Distance between two households}
+### Jensen-Shannon distance between two households
 $$\Delta_{ij} = \sum_{t=1}^{7\times 48} \text{JS}(p_t,q_t)$$
-\end{block}
 
-## Kernel matrix and density ranking
-
-\begin{block}{Similarity between two households}
+### Similarity between two households
 $$
   w_{ij} = \exp(-\Delta_{ij}^2/h^2).
 $$
-\end{block}\pause
 
-Row sums of the kernel matrix gives a scaled kernel density estimate of households:
-\begin{block}{}
-$$  \hat{f}_i = \sum_{j=1}^n w_{ij}$$
-\end{block}
+### Laplacian eigenmaps
 
- * $h$ is bandwidth in Gaussian kernel.
- * Households can be ranked by density values.
+ * Laplacian eigenmap maps high-dimensional space to 2d space while preserving smallest distances, but not largest distances.
+ * We can use this to view the distances between the conditional densities of households
+ 
+## Outliers computed in embedded space:
 
-## Typical households
+```{r}
+plot(elecembed, embedded=TRUE, noutliers=3) +
+  xlim(-2.7,1.9) +
+  ggtitle("Laplacian embedding (HDRs on embedded space)")
+```
+
+## Most typical household
 
 ```{r typical}
 elecembed <- embedding(jsdmat, m=2)
@@ -797,98 +794,22 @@ mode3 <- order(fxyhi,decreasing=TRUE)[3]
 qdemandplot(mode1)
 ```
 
-## Typical households
-
-```{r mode2}
-qdemandplot(mode2)
-```
-
-## Typical households
-
-```{r mode3}
-qdemandplot(mode3)
-```
-
-## Anomalous households
+## Most anomalous household
 
 ```{r outlier1}
 outlier1 <- order(fxyhi,decreasing=FALSE)[1]
 qdemandplot(outlier1)
 ```
 
-## Anomalous households
+# Packages
 
-```{r outlier2}
-outlier2 <- order(fxyhi,decreasing=FALSE)[2]
-qdemandplot(outlier2)
-```
+## Packages
+\fontsize{14}{15}\sf
 
-## Anomalous households
-
-```{r outlier3}
-outlier3 <- order(fxyhi,decreasing=FALSE)[3]
-qdemandplot(outlier3)
-```
-
-# Visualization via embedding
-
-## Laplacian eigenmaps
-\fontsize{13}{15}\sf
-
-> - **Idea:** Embed conditional densities in a 2d space where the distances are preserved "as far as possible".
-> -
- \begin{align*}
- \\[-1.36cm]
- \text{Let}\quad
-   \bm{W} &=[w_{ij}] &&\text{~~ where~}w_{ij} = \exp(-\Delta_{ij}^2/h^2).\\
-   \bm{D} &= \text{diag}(\hat{f}_i) &&\text{~~ where~}\hat{f}_i = \sum_{j=1}^n w_{ij}\\
-   \bm{L} &=\bm{D}-\bm{W} &&\text{~~ (the Laplacian matrix).}\hspace{5cm}
- \end{align*}
-> - Solve generalized eigenvector problem: $\bm{L}\bm{e} = \lambda \bm{D}\bm{e}$.
-> - Let $\bm{e}_k$ be eigenvector corresponding to $k$th \emph{smallest} eigenvalue.
-> - Then $\bm{e}_2$ and $\bm{e}_3$ create an embedding of households in 2d space.
-
-## Key property of Laplacian embedding
-
-Let $y_i = (e_{2,i},e_{3,i})$ be the embedded point corresponding to household $i$.
-
-\begin{block}{}
-Then the Laplacian eigenmap minimizes
-$$
-  \sum_{ij} w_{ij}(y_i-y_j)^2 = \bm{y}'\bm{L}\bm{y} \qquad\text{such that}\quad
-\bm{y}'\bm{D}\bm{y}=1.
-$$
-\end{block}\pause
-
- > - the most similar points are as close as possible.
- > - First eigenvalue is 0 due to translation invariance.
- > - Equivalent to optimal embedding using Laplace-Beltrami operator on manifolds.
-
-
-## Outliers computed in embedded space:
-
-```{r}
-#plot(elecembed, embedded=TRUE, noutliers=3) +
-#  xlim(-2.7,1.9) +
-#  ggtitle("Laplacian embedding (HDRs on embedded space)")
-```
-
-# Features and limitations
-
-## Features and limitations
-\fontsize{12}{13}\sf
-
-\begin{block}{Features of approach}
-\begin{itemize}
- \item Converting time series to quantile surfaces conditional on time of week.
- \item Using pairwise distances between households
- \item Using kernel matrices for density ranking, embedding and clustering
-\end{itemize}
-\end{block}\pause
-
-**Unresolved issues**
-
-* Need to select the bandwidth $h$ in constructing the similarity matrix.
-* Two different uses of bandwidth: density-ranking, embedding. Different bandwidth in each case?
-* The use of pairwise distances makes it hard to scale this algorithm.
+ * **tsfeatures**: compute time series features. \newline\alert{github.com/robjhyndman/tsfeatures}
+ * **hdrcde**: scatterplots with bivariate HDRs. \newline\alert{CRAN | github.com/robjhyndman/hdrcde}
+ * **stray**: finding outliers in high dimensions. \newline\alert{github.com/pridiltal/stray}
+ * **oddstream**: finding outliers in streaming data. \newline\alert{github.com/pridiltal/oddstream}
+ * **Mcomp**: M3 data. \newline\alert{CRAN | github.com/robjhyndman/Mcomp}
+ * **anomalous**: yahoo data. \newline\alert{github.com/robjhyndman/anomalous}
 
