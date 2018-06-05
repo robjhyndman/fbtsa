@@ -7,7 +7,7 @@
 \usepackage[utf8]{inputenc}
 
 % Plenty of room
-\setbeamersize{text margin left=2em,text margin right=2em}
+\setbeamersize{text margin left=1em,text margin right=1em}
 
 % metropolis options
 \metroset{progressbar=foot}
@@ -35,22 +35,21 @@
 \setlength{\TPVertModule}{1cm}
 \def\placefig#1#2#3#4{\begin{textblock}{.1}(#1,#2)\rlap{\includegraphics[#3]{#4}}\end{textblock}}
 
-
-\def\maxwidth{\linewidth}
-\def\maxheight{1\textheight}
+\def\maxwidth{11.7cm}
+\def\maxheight{8cm}
 \makeatother
 % Scale images if necessary, so that they will not overflow the page
 % margins by default, and it is still possible to overwrite the defaults
 % using explicit options in \includegraphics[width, height, ...]{}
 \setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
 
-
 \def\fullwidth#1{\vspace*{-0.2cm}\par\centerline{\includegraphics[width=20cm]{#1}}}
 \def\fullheight#1{\vspace*{-0.2cm}\par\centerline{\includegraphics[height=12cm]{#1}}}
+\def\full#1{\vspace*{0.2cm}\par\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true]{#1}}}% Clever right hand placement
 
-% Clever right hand placement
 \newcommand*{\atright}[1]{{%
-  \unskip\nobreak\hfill\penalty50
+  \un
+  skip\nobreak\hfill\penalty50
   \hskip2em\hbox{}\nobreak\hfill#1
   \parfillskip=0pt\finalhyphendemerits=0\par}}
 
@@ -124,8 +123,6 @@
 {\color{white}\raggedright{\insertauthor}\\[0.1cm]
 \insertdate}
 \end{textblock}}
-
-
 
 \showtoc
 

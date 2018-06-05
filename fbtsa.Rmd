@@ -24,6 +24,7 @@ library(tidyverse)
 library(data.table)
 library(GGally)
 source("functions.R")
+source("ggbiplot.R")
 set.seed(20180605)
 ```
 
@@ -125,7 +126,8 @@ Called ``features'' in the machine learning literature.
 
 ```{r stl, fig.height=4.7}
 forecast::mstl(M3[["N2096"]]$x) %>%
-  autoplot() + ylab("") + xlab("")
+  autoplot() + ylab("") + xlab("") +
+  scale_x_continuous(breaks=seq(1982,1992,by=1), minor_breaks = NULL)
 ```
 
 ## Candidate features
@@ -180,6 +182,27 @@ M3Features <- bind_cols(
   mutate(Period = as.factor(Frequency))
 ```
 
+```{r M3examples, include=FALSE}
+#Consider only long series
+n <- unlist(lapply(M3,function(x){x$n}))
+M3Featureslong <- M3Features[n>50,]
+M3long <- M3[names(M3)[n>50]]
+fnames <- c("M3Freq","M3spec","M3trend","M3season","M3acf","M3lambda")
+k <- NROW(M3Featureslong)
+for(i in 1:6)
+{
+  j <- order(M3Featureslong[[i]])
+  savepdf(paste(fnames[i],"Lo",sep=""), width=20, height=7)
+  print(autoplot(M3long[[j[1]]]$x) +
+    ylab(M3long[[j[1]]]$sn) + xlab(""))
+  endpdf()
+  savepdf(paste(fnames[i],"Hi",sep=""), width=20, height=7)
+  print(autoplot(M3long[[j[k]]]$x) +
+    ylab(M3long[[j[k]]]$sn) + xlab(""))
+  endpdf()
+}
+```
+
 ## Distribution of Period for M3
 
 ```{r M3period}
@@ -194,11 +217,41 @@ ggally_barDiag(M3Features,
 gghist(M3Features, aes_string("Season"))
 ```
 
+\only<2->{
+\begin{textblock}{6}(0.2,3)
+  \begin{alertblock}{Low Seasonality}
+    \includegraphics[width=6cm]{M3seasonLo.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+\only<3>{
+\begin{textblock}{6}(6.6,3)
+  \begin{alertblock}{High Seasonality}
+    \includegraphics[width=6cm]{M3seasonHi.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+
 ## Distribution of Trend for M3
 
 ```{r M3trend}
 gghist(M3Features, aes_string("Trend"))
 ```
+
+\only<2->{
+\begin{textblock}{6}(0.2,3)
+  \begin{alertblock}{Low Trend}
+    \includegraphics[width=6cm]{M3trendLo.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+\only<3>{
+\begin{textblock}{6}(6.6,3)
+  \begin{alertblock}{High Trend}
+    \includegraphics[width=6cm]{M3trendHi.pdf}
+  \end{alertblock}
+\end{textblock}
+}
 
 ## Distribution of Residual ACF1 for M3
 
@@ -206,11 +259,41 @@ gghist(M3Features, aes_string("Trend"))
 gghist(M3Features, aes_string("ACF1"))
 ```
 
+\only<2->{
+\begin{textblock}{6}(0.2,3)
+  \begin{alertblock}{Low ACF1}
+    \includegraphics[width=6cm]{M3acfLo.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+\only<3>{
+\begin{textblock}{6}(6.6,3)
+  \begin{alertblock}{High ACF1}
+    \includegraphics[width=6cm]{M3acfHi.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+
 ## Distribution of Spectral Entropy for M3
 
 ```{r M3entropy}
 gghist(M3Features, aes_string("Entropy"))
 ```
+
+\only<2->{
+\begin{textblock}{6}(0.2,3)
+  \begin{alertblock}{Low Entropy}
+    \includegraphics[width=6cm]{M3specLo.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+\only<3>{
+\begin{textblock}{6}(6.6,3)
+  \begin{alertblock}{High Entropy}
+    \includegraphics[width=6cm]{M3specHi.pdf}
+  \end{alertblock}
+\end{textblock}
+}
 
 ## Feature distributions
 
@@ -236,20 +319,105 @@ M3Features %>%
   ggpairs(diag = list(continuous = yk_ggally_densityDiag,
                       discrete = yk_ggally_barDiag),
           axisLabels = "none",
-          lower=list(continuous = wrap("points", alpha = 0.5,  size=0.2)))
+          lower=list(continuous = wrap("points", alpha = 0.5,  size=0.2))) -> p
+print(p)
+savepdf("PairwisePlot")
+print(p)
+endpdf()
 ```
 
 ## Feature distributions
+\fontsize{11}{13}\sf
 
-```{r m3pca}
+```r
+M3Features %>%
+  select(Period, Entropy, Trend, Season, ACF1, Lambda) %>%
+  GGally::ggpairs()
+```
+
+\centerline{\includegraphics[width=10.4cm]{PairwisePlot}}
+
+## Dimension reduction for time series
+
+```{r m3sample, include=FALSE}
+j <- sample(1:3003, 100)
+ncol <- 5
+n <- length(j)
+savepdf("M3sample")
+plot(0,0,ylim=c(0,n/ncol),xlim=c(0,ncol*1.2),yaxt="n",xaxt="n",ylab="",xlab="",bty="n",type="n")
+for(i in 1:n)
+  lines( (1:length(scalem3[[j[i]]]))/length(scalem3[[j[i]]]) + ((i-1)%%ncol)*1.1 ,
+         scalem3[[j[i]]] + trunc((i-1)/ncol))
+endpdf()
+```
+
+```{r m3pca, dependson="ijf2017"}
 # 2-d Feature space (Top of Fig 2)
 prcomp(select(M3Features, -Period), scale=TRUE)$x %>%
   as_tibble() %>%
-  bind_cols(Period=M3Features$Period) %>%
-  ggplot(aes(x=PC1, y=PC2)) +
-    geom_point(aes(col=Period))
+  bind_cols(M3Features) %>%
+  ggplot(aes(x=PC1, y=PC2)) + 
+    geom_point() -> p
+savepdf("FeatureSpace", height=13, width=13)
+print(p)
+endpdf()
 ```
 
+\only<1->{\placefig{0}{1}{width=4cm,height=8.3cm,trim=0 0 200 0,clip=TRUE}{M3sample}}
+\only<2->{\placefig{6}{1}{width=6cm}{PairwisePlot}}
+\only<3>{\placefig{5.2}{5.2}{width=4cm}{FeatureSpace}}
+
+\only<2->{\placefig{4}{2}{width=2cm}{arrow}}
+\only<3>{\placefig{8.4}{4.2}{width=2cm,angle=-90}{arrow}}
+
+\only<2->{\begin{textblock}{2.1}(4,2.6)
+\begin{alertblock}{}\small
+Feature calculation
+\end{alertblock}
+\end{textblock}}
+
+\only<3->{\begin{textblock}{2.8}(9.7,4.1)
+\begin{alertblock}{}\small
+Principal component decomposition
+\end{alertblock}
+\end{textblock}}
+
+## M3 feature space
+\fontsize{12}{13}\sf
+
+```r
+prcomp(select(M3Features, -Period), scale=TRUE)$x %>%
+  ggplot(aes(x=PC1, y=PC2))
+```
+\vspace*{-0.2cm}
+
+```{r m3pca0, dependson="m3pca", fig.height=3.6, fig.width=3.6}
+p
+```
+
+
+\begin{textblock}{1}(7,9.2)
+\textcolor{black}{PC1}
+\end{textblock}
+
+\begin{textblock}{3}(9,3)
+\begin{block}{}\fontsize{12}{13}\sf
+First two PCs explain 58.5\% of the variance.
+\end{block}
+\end{textblock}
+
+## M3 feature space
+
+```{r m3biplot, dependson="m3pca", fig.width=4.5, fig.height=4.5}
+prcomp(select(M3Features, -Period), scale=TRUE) %>%
+ ggbiplot(alpha=0.2)
+```
+
+## M3 feature space
+
+```{r m3pca1, dependson="m3pca", fig.width=5.5, fig.height=4.5}
+ p + geom_point(aes(col=Period))
+```
 
 
 ## Hyndman, Wang and Laptev (ICDM 2015)
