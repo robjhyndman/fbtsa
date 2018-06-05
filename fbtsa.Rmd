@@ -34,7 +34,7 @@ set.seed(20180605)
 \full{M3paper}
 \only<2>{
 \placefig{1}{4}{height=3cm}{SMakridakis}
-\placefig{8.5}{4}{height=3cm}{MHibon}}
+\placefig{8.8}{4}{height=3cm}{MHibon}}
 
 ## How to plot lots of time series?
 
@@ -128,16 +128,17 @@ forecast::mstl(M3[["N2096"]]$x) %>%
 ```
 
 ## Candidate features
+
 \begin{block}{STL decomposition}
 \centerline{$Y_t = S_t + T_t + R_t$}
-\end{block}\pause\fontsize{13}{15}\sf
+\end{block}\pause\fontsize{14}{16}\sf\vspace*{-0.2cm}
 
 * Seasonal period
 * Autocorrelations of data ($Y_1,\dots,Y_T$)
 * Autocorrelations of data ($R_1,\dots,R_T$)
 * Strength of seasonality: $\max\left(0,1 - \frac{\Var(R_t)}{\Var(Y_t-T_t)}\right)$
 * Strength of trend:  $\max\left(0,1 - \frac{\Var(R_t)}{\Var(Y_t-S_t)}\right)$
-* Spectral entropy: $H = - \int_{-\pi}^{\pi} f_y(\lambda) \log f_y(\lambda) d\lambda$, where $f_y(\lambda)$ is spectral density of $Y_t$.\\newline
+* Spectral entropy: $H = - \int_{-\pi}^{\pi} f_y(\lambda) \log f_y(\lambda) d\lambda$, where $f_y(\lambda)$ is spectral density of $Y_t$.\newline
 Low values of $H$ suggest a time series that is easier to forecast (more signal).
 * Optimal Box-Cox transformation of data
 
@@ -353,7 +354,7 @@ endpdf()
 prcomp(select(M3Features, -Period), scale=TRUE)$x %>%
   as_tibble() %>%
   bind_cols(M3Features) %>%
-  ggplot(aes(x=PC1, y=PC2)) + 
+  ggplot(aes(x=PC1, y=PC2)) +
     coord_equal(ratio = 1)  +
     geom_point() -> p
 savepdf("FeatureSpace", height=13, width=13)
@@ -409,16 +410,24 @@ prcomp(select(M3Features, -Period), scale=TRUE) %>%
 
 ```{r m3pca1, dependson="m3pca", fig.width=6, fig.height=4.5}
  p + geom_point(aes(col=Period)) +
-    coord_equal(ratio = 1) 
+    coord_equal(ratio = 1)
 ```
 
-## Papers and packages
+## Selecting a forecasting model using seer
 
-\hspace*{-0.4cm}\begin{tabular}{lp{8.5cm}}
-\raisebox{-2.3cm}{\includegraphics[width=2cm]{IJFcover.jpg}} & \RaggedRight Kang, Hyndman, \& Smith-Miles, K. (2017) Visualising forecasting algorithm performance using time series instance spaces. \emph{IJF}, \textbf{33}(2) 345--358. \\[0.6cm]
-\raisebox{-1.5cm}{\includegraphics[width=2cm]{Rlogo.jpg}} & \RaggedRight Hyndman, Wang, Kang, Talagala \& Montero-Manso (2018). \textbf{tsfeatures}: Time Series Feature Extraction. \par
-  \rlap{\url{github.com/robjhyndman/tsfeatures/}}
-\end{tabular}
+```{r seer1}
+library(seer)
+yearly_m3 <- subset(M3, "yearly")
+M3yearly_features <- cal_features(yearly_m3, database="M3", h=6)
+head(M3yearly_features)
+```
+
+## Selecting a forecasting model using seer
+
+```{r seer2}
+tslist <- list(M3[[1]], M3[[2]])
+fcast_accuracy(tslist=tslist,models= c("arima","ets","rw","rwd", "theta", "nn", "snaive", "mstl"),database ="M3", cal_MASE, h=6)
+```
 
 # Yahoo email servers
 
@@ -435,11 +444,11 @@ prcomp(select(M3Features, -Period), scale=TRUE) %>%
 ## Yahoo email servers
 \vspace*{0.2cm}\par
 
-\only<1>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true, 
+\only<1>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
 clip=true,trim=40 0 0 0]{busy_eg}}}
-\only<2>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true, 
+\only<2>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
 clip=true,trim=40 0 0 0]{memory_eg}}}
-\only<3>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true, 
+\only<3>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
 clip=true,trim=40 0 0 0]{page_eg}}}
 
 ## Yahoo email servers
@@ -473,7 +482,7 @@ hwl <- bind_cols(
          tsfeatures(yahoo,
            c("acf_features","entropy","lumpiness",
              "flat_spots","crossing_points")),
-         tsfeatures(yahoo,"stl_features", 
+         tsfeatures(yahoo,"stl_features",
          	    s.window='periodic', robust=TRUE),
          tsfeatures(yahoo, "max_kl_shift", width=48),
          tsfeatures(yahoo,
@@ -482,8 +491,8 @@ hwl <- bind_cols(
            c("max_level_shift","max_var_shift"), trim=TRUE)) %>%
   select(mean, var, x_acf1, trend,
          seasonal_strength, peak, trough,
-         entropy, lumpiness, spike, max_level_shift, 
-         max_var_shift, flat_spots, crossing_points, 
+         entropy, lumpiness, spike, max_level_shift,
+         max_var_shift, flat_spots, crossing_points,
          max_kl_shift, time_kl_shift)
 ```
 
@@ -514,7 +523,7 @@ hwl <- bind_cols(
 ```{r yahoo2, dependson="yahoo"}
 pc <- prcomp(na.omit(hwl), scale=TRUE)$x %>%
   as_tibble()
-p <- ggplot(pc, aes(x=PC1, y=PC2)) + 
+p <- ggplot(pc, aes(x=PC1, y=PC2)) +
     coord_equal(ratio = 1)  +
     geom_point()
 savepdf("YahooFeatureSpace", height=13, width=13)
@@ -661,7 +670,7 @@ ggplot(aes(y=demand, x=time), data=z) +
 * Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
 * $336$ probability distributions per household.
 
-```{r timeplot1repeat, fig.height=4.5}
+```{r timeplot1repeat, fig.height=4.2}
 id <- 128
 idlist <- unique(DT[,id])
 if(id <= 500)
@@ -685,7 +694,7 @@ ggplot(aes(y=demand, x=time), data=z) +
 * Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
 * $336$ probability distributions per household.
 
-```{r qdemandplot1, fig.height=4.5}
+```{r qdemandplot1, fig.height=4.2}
 qdemandplot(128)
 ```
 
@@ -695,7 +704,7 @@ qdemandplot(128)
 * Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
 * $336$ probability distributions per household.
 
-```{r timeplot3repeat, fig.height=4.5}
+```{r timeplot3repeat, fig.height=4.2}
 id <- 12
 idlist <- unique(DT[,id])
 if(id <= 500)
@@ -719,7 +728,7 @@ ggplot(aes(y=demand, x=time), data=z) +
 * Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
 * $336$ probability distributions per household.
 
-```{r qdemandplot3, fig.height=4.5}
+```{r qdemandplot3, fig.height=4.2}
 qdemandplot(12)
 ```
 
@@ -773,10 +782,11 @@ $$
 
  * Laplacian eigenmap maps high-dimensional space to 2d space while preserving smallest distances, but not largest distances.
  * We can use this to view the distances between the conditional densities of households
- 
+
 ## Outliers computed in embedded space:
 
-```{r}
+```{r embedding}
+elecembed <- embedding(jsdmat, m=2)
 plot(elecembed, embedded=TRUE, noutliers=3) +
   xlim(-2.7,1.9) +
   ggtitle("Laplacian embedding (HDRs on embedded space)")
@@ -784,8 +794,7 @@ plot(elecembed, embedded=TRUE, noutliers=3) +
 
 ## Most typical household
 
-```{r typical}
-elecembed <- embedding(jsdmat, m=2)
+```{r typical, dependson='embedding'}
 # Look at modal observations
 fxyhi <- kdedist(elecembed$distances, bandwidth=1e5)
 mode1 <- order(fxyhi,decreasing=TRUE)[1]
@@ -796,7 +805,7 @@ qdemandplot(mode1)
 
 ## Most anomalous household
 
-```{r outlier1}
+```{r outlier1, dependson='typical'}
 outlier1 <- order(fxyhi,decreasing=FALSE)[1]
 qdemandplot(outlier1)
 ```
@@ -810,6 +819,15 @@ qdemandplot(outlier1)
  * **hdrcde**: scatterplots with bivariate HDRs. \newline\alert{CRAN | github.com/robjhyndman/hdrcde}
  * **stray**: finding outliers in high dimensions. \newline\alert{github.com/pridiltal/stray}
  * **oddstream**: finding outliers in streaming data. \newline\alert{github.com/pridiltal/oddstream}
+ * **seer**: selecting forecasting model using features. \newline\alert{github.com/thiyangt/seer}
  * **Mcomp**: M3 data. \newline\alert{CRAN | github.com/robjhyndman/Mcomp}
  * **anomalous**: yahoo data. \newline\alert{github.com/robjhyndman/anomalous}
 
+
+## Papers and packages
+
+\hspace*{-0.4cm}\begin{tabular}{lp{8.5cm}}
+\raisebox{-2.3cm}{\includegraphics[width=2cm]{IJFcover.jpg}} & \RaggedRight Kang, Hyndman, \& Smith-Miles, K. (2017) Visualising forecasting algorithm performance using time series instance spaces. \emph{IJF}, \textbf{33}(2) 345--358. \\[0.6cm]
+\raisebox{-1.5cm}{\includegraphics[width=2cm]{Rlogo.jpg}} & \RaggedRight Hyndman, Wang, Kang, Talagala \& Montero-Manso (2018). \textbf{tsfeatures}: Time Series Feature Extraction. \par
+  \rlap{\url{github.com/robjhyndman/tsfeatures/}}
+\end{tabular}
