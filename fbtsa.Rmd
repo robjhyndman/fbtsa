@@ -419,6 +419,70 @@ prcomp(select(M3Features, -Period), scale=TRUE) %>%
  p + geom_point(aes(col=Period))
 ```
 
+## Papers and packages
+
+\hspace*{-0.4cm}\begin{tabular}{lp{8.5cm}}
+\raisebox{-2.3cm}{\includegraphics[width=2cm]{IJFcover.jpg}} & \RaggedRight Kang, Hyndman, \& Smith-Miles, K. (2017) Visualising forecasting algorithm performance using time series instance spaces. \emph{IJF}, \textbf{33}(2) 345--358. \\[0.6cm]
+\raisebox{-1.5cm}{\includegraphics[width=2cm]{Rlogo.jpg}} & \RaggedRight Hyndman, Wang, Kang, Talagala \& Montero-Manso (2018). \textbf{tsfeatures}: Time Series Feature Extraction. \par
+  \rlap{\url{github.com/robjhyndman/tsfeatures/}}
+\end{tabular}
+
+# Finding anomalies
+
+## Yahoo web-traffic 
+\fontsize{13}{15}\sf\vspace*{-0.2cm}
+
+  * Tens of thousands of time series collected at one-hour intervals over one month.
+  * Consisting of several server metrics (e.g. CPU usage and paging views) from many server farms globally.
+  * Aim: find unusual (anomalous) time series.
+
+\placefig{0}{4.6}{width=13.7cm, trim=0 20 0 220, clip=TRUE}{serverfarm}
+\vspace*{10cm}
+
+## Yahoo web-traffic 
+\centerline{\includegraphics[width=4.3cm, clip=true, trim=30 10 20 0, height=8cm]{busy_eg.pdf}
+\includegraphics[width=4.3cm, clip=true, trim=30 10 20 0, height=8cm]{memory_eg.pdf}
+\includegraphics[width=4.3cm, clip=true, trim=30 10 20 0, height=8cm]{page_eg.pdf}}
+
+## Feature space
+\fontsize{10}{11}\sf\vspace*{-0.2cm}
+
+* \textbf{ACF1}: first order autocorrelation = $\text{Corr}(Y_t,Y_{t-1})$
+* Strength of **trend** and **seasonality** based on STL
+* Trend **linearity** and **curvature**
+* Size of seasonal **peak** and **trough**
+* Spectral **entropy**
+* **Lumpiness**: variance of block variances (block size 24).
+* **Spikiness**: variances of leave-one-out variances of STL remainders.
+* **Level shift**: Maximum difference in trimmed means of consecutive moving windows of size 24.
+* **Variance change**: Max difference in variances of consecutive moving windows of size 24.
+* **Flat spots**: Discretize sample space into 10 equal-sized intervals. Find max run length in any interval.
+* Number of **crossing points** of mean line.
+ * **Kullback-Leibler score**:
+      Maximum of $D_{KL}(P\|Q) = \int P(x)\ln P(x)/ Q(x) dx$
+       where $P$ and $Q$ are estimated by kernel density estimators applied to
+       consecutive windows of size 48.
+* **Change index**: Time of maximum KL score
+
+
+
+## What is ``anomalous''?
+
+ * We need a measure of the ``anomalousness'' of a time series.
+ * Idea: We rank points based on their local density using a bivariate kernel density estimate.
+
+## Bivariate kernel density
+\begin{block}{}
+  \begin{equation*}
+    \hat{f}(\x; \H) = \frac{1}{n}\sum_{i=1}^n K_{\H}(\x - \X_i)
+  \end{equation*}
+\end{block}
+
+  * $\X_i \in$ a bivariate random sample $\{\X_1, \X_2, \ldots, \X_n\}$
+  * $K_{\H}(\x)$ is the standard normal kernel function
+  * $\H$ estimated by minimizing the sum of AMISE
+  * Rank points based on $\hat{f}$ values in 2d PCA space.
+
 
 ## Hyndman, Wang and Laptev (ICDM 2015)
 
@@ -652,9 +716,9 @@ qdemandplot(12)
 
 > - Sample quantiles better than kernel density estimate:
 \begin{itemize}
-       \item presence of zeros
-       \item non-negative support
-       \item high skewness
+       * presence of zeros
+       * non-negative support
+       * high skewness
 \end{itemize}
 > - Avoids missing data issues and variation in series length
 > - Avoids timing of household events, holidays, etc.
