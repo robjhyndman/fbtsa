@@ -45,7 +45,7 @@
 #'   wine.pca <- prcomp(wine, scale. = TRUE)
 #'   print(ggbiplot(wine.pca, obs.scale = 1, var.scale = 1, groups = wine.class, ellipse = TRUE, circle = TRUE))
 #'
-ggbiplot <- function(pcobj, choices = 1:2, scale = 1, pc.biplot = TRUE, 
+ggbiplot <- function(pcobj, choices = 1:2, scale = 0, pc.biplot = TRUE, 
                       obs.scale = 1 - scale, var.scale = scale, 
                       groups = NULL, ellipse = FALSE, ellipse.prob = 0.68, 
                       labels = NULL, labels.size = 3, alpha = 1, 
@@ -188,7 +188,7 @@ ggbiplot <- function(pcobj, choices = 1:2, scale = 1, pc.biplot = TRUE,
     geom_text(data = df.v, 
               aes(label = varname, x = xvar, y = yvar, 
                   angle = angle, hjust = hjust), 
-              color = 'darkred', size = varname.size)
+              color = 'red', size = varname.size)
   }
 
   if(var.axes) {
@@ -206,7 +206,7 @@ ggbiplot <- function(pcobj, choices = 1:2, scale = 1, pc.biplot = TRUE,
       geom_segment(data = df.v,
                    aes(x = 0, y = 0, xend = xvar, yend = yvar),
                    arrow = arrow(length = unit(1/2, 'picas')), 
-                   color = muted('red'))
+                   color = 'red')
   }
 
   # Change the name of the legend for groups
