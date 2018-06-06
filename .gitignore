@@ -7,4 +7,5 @@ fbtsa.tex
 *.snm
 *.toc
 *.vrb
-
+.RData
+.Rhistory

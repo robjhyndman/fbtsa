@@ -19,6 +19,7 @@ output:
 knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, cache=TRUE,
   dev.args=list(bg=grey(0.9), pointsize=11))
 library(Mcomp)
+library(anomalous)
 library(tsfeatures)
 library(tidyverse)
 library(data.table)
@@ -26,6 +27,7 @@ library(GGally)
 source("functions.R")
 source("ggbiplot.R")
 set.seed(20180605)
+options(digits=3,width=50)
 ```
 
 # M3 forecasting competition
@@ -45,37 +47,18 @@ for(i in 1:3003)
   scalem3[[i]] <- M3[[i]]$x-min(M3[[i]]$x)
   scalem3[[i]] <- as.numeric(scalem3[[i]]/max(scalem3[[i]]))
 }
-
 k <- sample(1:3003,3003)
-for(i in 1:200)
+files <- c(1:5,seq(10,50,by=10),100,200,500,3003)
+cols <- sample(rainbow(3003))
+for(i in files)
 {
   fname <- paste("M3data",i,sep="")
   savepdf(fname)
   plot(0,0,ylim=range(scalem3),xlim=c(0,1),xlab="Time",ylab="",type="n")
   for(i in 1:i)
-    lines((1:length(scalem3[[k[i]]]))/length(scalem3[[k[i]]]), scalem3[[k[i]]])
+    lines((1:length(scalem3[[k[i]]]))/length(scalem3[[k[i]]]), scalem3[[k[i]]], col=cols[i])
   endpdf()
 }
-savepdf("M3data500")
-plot(0,0,ylim=range(scalem3),xlim=c(0,1),xlab="Time",ylab="",type="n")
-for(i in 1:500)
-  lines((1:length(scalem3[[k[i]]]))/length(scalem3[[k[i]]]), scalem3[[k[i]]])
-endpdf()
-savepdf("M3data1000")
-plot(0,0,ylim=range(scalem3),xlim=c(0,1),xlab="Time",ylab="",type="n")
-for(i in 1:1000)
-  lines((1:length(scalem3[[k[i]]]))/length(scalem3[[k[i]]]), scalem3[[k[i]]])
-endpdf()
-savepdf("M3data2000")
-plot(0,0,ylim=range(scalem3),xlim=c(0,1),xlab="Time",ylab="",type="n")
-for(i in 1:2000)
-  lines((1:length(scalem3[[k[i]]]))/length(scalem3[[k[i]]]), scalem3[[k[i]]])
-endpdf()
-savepdf("M3dataall")
-plot(0,0,ylim=range(scalem3),xlim=c(0,1),xlab="Time",ylab="",type="n")
-for(i in 1:3003)
-  lines((1:length(scalem3[[i]]))/length(scalem3[[i]]), scalem3[[i]])
-endpdf()
 ```
 
 \only<1>{\full{M3data1}}
@@ -91,7 +74,7 @@ endpdf()
 \only<11>{\full{M3data100}}
 \only<12>{\full{M3data200}}
 \only<13>{\full{M3data500}}
-\only<14>{\full{M3dataall}}
+\only<14>{\full{M3data3003}}
 
 ## Key idea
 \placefig{9.1}{.5}{width=3.6cm}{tukey}
@@ -414,44 +397,67 @@ prcomp(select(M3Features, -Period), scale=TRUE) %>%
 ```
 
 ## Selecting a forecasting model using seer
+\fontsize{10}{10}\sf
 
-```{r seer1}
+```{r seer1, echo=TRUE}
 library(seer)
 yearly_m3 <- subset(M3, "yearly")
-M3yearly_features <- cal_features(yearly_m3, database="M3", h=6)
+M3yearly_features <- cal_features(yearly_m3, database="M3", h=6, highfreq=FALSE)
 head(M3yearly_features)
 ```
 
 ## Selecting a forecasting model using seer
+\fontsize{10}{10}\sf
 
-```{r seer2}
+```{r seer2, echo=TRUE}
 tslist <- list(M3[[1]], M3[[2]])
-fcast_accuracy(tslist=tslist,models= c("arima","ets","rw","rwd", "theta", "nn", "snaive", "mstl"),database ="M3", cal_MASE, h=6)
+fcast_accuracy(tslist=tslist, 
+    models= c("arima", "ets", "rw"," rwd", "theta", "nn", "snaive", "mstl"),
+    database ="M3", cal_MASE, h=6)
 ```
 
-# Yahoo email servers
+# Yahoo server metrics
 
-## Yahoo email servers
+## Yahoo server metrics
 \fontsize{13}{15}\sf\vspace*{-0.2cm}
 
-  * Tens of thousands of time series collected at one-hour intervals over one month.
+  * Tens of thousands of time series collected at one-hour intervals over 1--2 months.
   * Consisting of several server metrics (e.g. CPU usage and paging views) from many server farms globally.
   * Aim: find unusual (anomalous) time series.
 
 \placefig{0}{4.6}{width=13.7cm, trim=0 20 0 220, clip=TRUE}{serverfarm}
 \vspace*{10cm}
 
-## Yahoo email servers
+## Yahoo server metrics
 \vspace*{0.2cm}\par
 
-\only<1>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
-clip=true,trim=40 0 0 0]{busy_eg}}}
-\only<2>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
-clip=true,trim=40 0 0 0]{memory_eg}}}
-\only<3>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
-clip=true,trim=40 0 0 0]{page_eg}}}
+```{r yahoodata}
+k <- sample(NCOL(dat0), 10)
+savepdf("yahoodata1", width=15, height=12)
+p <- autoplot(dat0[,k], facet=TRUE) + xlab("Days") + ylab("")
+print(p)
+endpdf()
+k <- sample(NCOL(dat1), 10)
+savepdf("yahoodata2", width=15, height=12)
+p <- autoplot(dat1[,k], facet=TRUE) + xlab("Days") + ylab("")
+print(p)
+endpdf()
+k <- sample(NCOL(dat2), 10)
+savepdf("yahoodata3", width=15, height=12)
+p <- autoplot(dat2[,k], facet=TRUE) + xlab("Days") + ylab("")
+print(p)
+endpdf()
+```
 
-## Yahoo email servers
+
+\only<1>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
+clip=true,trim=40 0 0 0]{yahoodata1}}}
+\only<2>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
+clip=true,trim=40 0 0 0]{yahoodata2}}}
+\only<3>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
+clip=true,trim=40 0 0 0]{yahoodata3}}}
+
+## Yahoo server metrics
 \fontsize{11}{11.8}\sf\vspace*{-0.2cm}
 
 * **ACF1**: first order autocorrelation = $\text{Corr}(Y_t,Y_{t-1})$
@@ -475,8 +481,8 @@ clip=true,trim=40 0 0 0]{page_eg}}}
 
 ```r
 library(tsfeatures)
-library(tidyverse)
-library(anomalous)
+library(tidyverse) 
+library(anomalous) # For data
 yahoo <- cbind(dat0, dat1, dat2, dat3)
 hwl <- bind_cols(
          tsfeatures(yahoo,
@@ -500,9 +506,6 @@ hwl <- bind_cols(
 \fontsize{11}{11}\sf
 
 ```{r yahoo, fig.height=4, fig.width=4}
-library(tsfeatures)
-library(tidyverse)
-library(anomalous)
 yahoo <- cbind(dat0, dat1, dat2, dat3)
 hwl <- bind_cols(
          tsfeatures(yahoo,
@@ -609,7 +612,6 @@ autoplot(yahoo[,outliers[1]]) + ylab("") + ggtitle(paste("Series",outliers[1]))
 load("DT.rda")
 load("qdemand.rda")
 load("jsdmat.rda")
-source("functions.R")
 ```
 
 ## Irish smart metre data
@@ -637,11 +639,15 @@ j <- (DT[,id]==id)
 z <- DT[j, ]
 z$time <- z$day - 196 + z$period/48
 
-ggplot(aes(y=demand, x=time), data=z) +
+p <- ggplot(aes(y=demand, x=time), data=z) +
   geom_line() +
   ylab("Demand (kWh)") + xlab("Days") +
   ggtitle(paste("Demand for ID:",id)) +
   guides(fill=FALSE)
+p
+savepdf("timeplot", height=5, width=15)
+print(p)
+endpdf()
 ```
 
 ## Irish smart metre data
@@ -696,6 +702,9 @@ ggplot(aes(y=demand, x=time), data=z) +
 
 ```{r qdemandplot1, fig.height=4.2}
 qdemandplot(128)
+savepdf("quantileplot")
+qdemandplot(128)
+endpdf()
 ```
 
 ## Quantiles conditional on time of week
@@ -728,14 +737,18 @@ ggplot(aes(y=demand, x=time), data=z) +
 * Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
 * $336$ probability distributions per household.
 
-```{r qdemandplot3, fig.height=4.2}
+```{r qdemandplot3, fig.height=4.2, message=FALSE, warning=FALSE}
 qdemandplot(12)
+savepdf("quantile2plot")
+qdemandplot(12)
+endpdf()
 ```
+
 
 ## Quantiles conditional on time of week
 \fontsize{12}{13}\sf
 
-\centerline{\includegraphics[width=9.8cm]{quantileplot}}
+\centerline{\includegraphics[width=9.8cm,trim=0 35 0 125,clip=TRUE]{quantileplot}}
 
  - Sample quantiles better than kernel density estimate:
       * presence of zeros
@@ -750,7 +763,7 @@ qdemandplot(12)
 ## Pairwise distances
 
 \placefig{0.1}{1.5}{width=5.5cm, height=1.8cm, keepaspectratio=false}{timeplot}
-\placefig{7.2}{1.5}{width=5.5cm, height=1.8cm, keepaspectratio=false}{quantileplot}
+\placefig{7.2}{1.5}{width=5.5cm, height=1.8cm, keepaspectratio=false,trim=0 35 0 125,clip=TRUE}{quantileplot}
 \begin{textblock}{3}(5.7,2.2)\LARGE
 $\longrightarrow$
 \end{textblock}
@@ -760,8 +773,8 @@ $\longrightarrow$
 
  * Can we compute pairwise distances between all households?
 
-\placefig{0.1}{7.5}{width=5.5cm, height=1.8cm, keepaspectratio=false}{quantileplot}
-\placefig{7.2}{7.5}{width=5.5cm, height=1.8cm, keepaspectratio=false}{quantile2plot}
+\placefig{0.1}{7.5}{width=5.5cm, height=1.8cm, keepaspectratio=false,trim=0 35 0 125,clip=TRUE}{quantileplot}
+\placefig{7.2}{7.5}{width=5.5cm, height=1.8cm, keepaspectratio=false,trim=0 35 0 125,clip=TRUE}{quantile2plot}
 \begin{textblock}{1.48}(5.65,8.2)
 $\leftarrow\hfill~?\hfill\rightarrow$\\\fontsize{11}{12}\sf
 \hfill Distance \hfill
@@ -813,7 +826,7 @@ qdemandplot(outlier1)
 # Packages
 
 ## Packages
-\fontsize{14}{15}\sf
+\fontsize{14}{14}\sf
 
  * **tsfeatures**: compute time series features. \newline\alert{github.com/robjhyndman/tsfeatures}
  * **hdrcde**: scatterplots with bivariate HDRs. \newline\alert{CRAN | github.com/robjhyndman/hdrcde}
@@ -823,11 +836,20 @@ qdemandplot(outlier1)
  * **Mcomp**: M3 data. \newline\alert{CRAN | github.com/robjhyndman/Mcomp}
  * **anomalous**: yahoo data. \newline\alert{github.com/robjhyndman/anomalous}
 
+## Acknowledgments
 
-## Papers and packages
 
-\hspace*{-0.4cm}\begin{tabular}{lp{8.5cm}}
-\raisebox{-2.3cm}{\includegraphics[width=2cm]{IJFcover.jpg}} & \RaggedRight Kang, Hyndman, \& Smith-Miles, K. (2017) Visualising forecasting algorithm performance using time series instance spaces. \emph{IJF}, \textbf{33}(2) 345--358. \\[0.6cm]
-\raisebox{-1.5cm}{\includegraphics[width=2cm]{Rlogo.jpg}} & \RaggedRight Hyndman, Wang, Kang, Talagala \& Montero-Manso (2018). \textbf{tsfeatures}: Time Series Feature Extraction. \par
-  \rlap{\url{github.com/robjhyndman/tsfeatures/}}
+###
+\fontsize{11}{11}\sf
+\centering\begin{tabular}{p{3.5cm}p{3.6cm}p{3.5cm}}
+\includegraphics[height=3cm]{earowang} &
+\includegraphics[height=3cm]{yanfei} &
+\includegraphics[height=3cm]{dilini}\\
+Earo Wang  & Yanfei Kang & Dilini Talagala \\
+\includegraphics[height=3cm]{thiyanga} &
+\includegraphics[height=3cm]{mitch} &
+\includegraphics[height=3cm]{mitch}\\
+Thiyanga Talagala & Pablo Montero-Manso & Mitchell O'Hara-Wild
 \end{tabular}
+
+
