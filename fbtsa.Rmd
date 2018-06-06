@@ -399,7 +399,7 @@ prcomp(select(M3Features, -Period), scale=TRUE) %>%
 
 ```{r seer1, echo=TRUE}
 library(seer)
-cal_features(subset(M3,"yearly"), 
+cal_features(subset(M3,"yearly"),
              h=6, database="M3",  highfreq=FALSE) %>%
   head()
 ```
@@ -859,7 +859,7 @@ qdemandplot(outlier1)
 \includegraphics[height=3cm]{dilini}\\
 Earo Wang  & Yanfei Kang & Dilini Talagala \\
 \includegraphics[height=3cm]{thiyanga} &
-\includegraphics[height=3cm]{mitch} &
+\includegraphics[height=3cm]{pablo} &
 \includegraphics[height=3cm]{mitch}\\
 Thiyanga Talagala & Pablo Montero-Manso & Mitchell O'Hara-Wild
 \end{tabular}
