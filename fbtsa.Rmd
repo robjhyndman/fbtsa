@@ -20,14 +20,14 @@ knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, cache=TRUE,
   dev.args=list(bg=grey(0.9), pointsize=11))
 library(Mcomp)
 library(anomalous)
-library(tsfeatures)
-library(tidyverse)
 library(data.table)
 library(GGally)
+library(tsfeatures)
+library(tidyverse)
 source("functions.R")
 source("ggbiplot.R")
 set.seed(20180605)
-options(digits=3,width=50)
+options(digits=3,width=60)
 ```
 
 # M3 forecasting competition
@@ -136,22 +136,20 @@ M3data <- purrr::map(Mcomp::M3,
 
 ```
 
-\fontsize{9}{9}\sf
+\fontsize{9}{10}\sf
 
 ```{r ijf2017, echo=TRUE}
-library(tsfeatures)
+library(tsfeatures); library(tidyverse)
 lambda_stl <- function(x,...) {
-  lambda <- forecast::BoxCox.lambda(x,
-    lower=0, upper=1, method='loglik')
+  lambda <- forecast::BoxCox.lambda(x, lower=0, upper=1, method='loglik')
   y <- forecast::BoxCox(x, lambda)
   c(stl_features(y,s.window='periodic', robust=TRUE, ...),
     lambda=lambda)
 }
 M3Features <- bind_cols(
-  tsfeatures(M3data, c("frequency", "entropy")),
-  tsfeatures(M3data, "lambda_stl", scale=FALSE)) %>%
-  select(frequency, entropy, trend, seasonal_strength,
-    e_acf1, lambda) %>%
+    tsfeatures(M3data, c("frequency", "entropy")),
+    tsfeatures(M3data, "lambda_stl", scale=FALSE)) %>%
+  select(frequency, entropy, trend, seasonal_strength, e_acf1, lambda) %>%
   replace_na(list(seasonal_strength=0)) %>%
   rename(
     Frequency = frequency,
@@ -384,9 +382,9 @@ First two PCs explain 58.5\% of the variance.
 
 ## M3 feature space
 
-```{r m3biplot, dependson="m3pca", fig.width=4.5, fig.height=4.5}
+```{r m3biplot, dependson="m3pca",fig.width=5.3,fig.height=4.5}
 prcomp(select(M3Features, -Period), scale=TRUE) %>%
- ggbiplot(alpha=0.2)
+ ggbiplot(alpha=0.2, scale=0) + coord_equal(ratio = 1)
 ```
 
 ## M3 feature space
@@ -401,20 +399,25 @@ prcomp(select(M3Features, -Period), scale=TRUE) %>%
 
 ```{r seer1, echo=TRUE}
 library(seer)
-yearly_m3 <- subset(M3, "yearly")
-M3yearly_features <- cal_features(yearly_m3, database="M3", h=6, highfreq=FALSE)
-head(M3yearly_features)
+cal_features(subset(M3,"yearly"), 
+             h=6, database="M3",  highfreq=FALSE) %>%
+  head()
 ```
 
 ## Selecting a forecasting model using seer
 \fontsize{10}{10}\sf
 
 ```{r seer2, echo=TRUE}
-tslist <- list(M3[[1]], M3[[2]])
-fcast_accuracy(tslist=tslist, 
-    models= c("arima", "ets", "rw"," rwd", "theta", "nn", "snaive", "mstl"),
-    database ="M3", cal_MASE, h=6)
+fcast_accuracy(M3[1:10],
+  models=c("arima","ets","rw","rwd","theta","nn","snaive","mstl"),
+  database="M3", cal_MASE, h=6)
 ```
+
+## Selecting a forecasting model using seer
+
+ * We train a random forest using feature inputs and labels equal to best-performing method on test sets.
+ * Training data augmented by simulating from fitted models.
+ * Entered M4 competition after training on M1, M3, and truncated M4 series + augmented series.
 
 # Yahoo server metrics
 
@@ -480,8 +483,7 @@ clip=true,trim=40 0 0 0]{yahoodata3}}}
 \fontsize{10}{10}\sf
 
 ```r
-library(tsfeatures)
-library(tidyverse) 
+library(tsfeatures); library(tidyverse)
 library(anomalous) # For data
 yahoo <- cbind(dat0, dat1, dat2, dat3)
 hwl <- bind_cols(
@@ -543,14 +545,24 @@ ggplot(pc, aes(x=PC1, y=PC2)) + geom_point()
 
 \includegraphics[width=5.8cm]{YahooFeatureSpace}
 
-\begin{textblock}{5}(7,3)
-\begin{alertblock}{What is ``anomalous''?}
+
+## Feature space
+
+```{r yahoobiplot, fig.width=5, fig.height=6}
+prcomp(na.omit(hwl), scale=TRUE) %>%
+ ggbiplot(alpha=0.2, scale=0) +
+ coord_equal(ratio = 1)
+```
+
+\only<2>{\begin{textblock}{4}(8,3)\fontsize{11}{11}\sf
+\begin{alertblock}{\fontsize{11}{11}\sffamily What is ``anomalous''?}
 \begin{itemize}\tightlist
 \item We need a measure of the ``anomalousness'' of a time series.
 \item Rank points based on their local density using a bivariate kernel density estimate.
 \end{itemize}
 \end{alertblock}
-\end{textblock}
+\end{textblock}}
+
 
 ## Finding weird time series
 \fontsize{10}{10}\sf
@@ -670,7 +682,7 @@ ggplot(aes(y=demand, x=time), data=z) +
   guides(fill=FALSE)
 ```
 
-## Quantiles conditional on time of week
+## Quantiles as features
 \fontsize{11}{13}\sf
 
 * Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
@@ -694,7 +706,7 @@ ggplot(aes(y=demand, x=time), data=z) +
   guides(fill=FALSE)
 ```
 
-## Quantiles conditional on time of week
+## Quantiles as features
 \fontsize{11}{13}\sf
 
 * Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
@@ -707,7 +719,7 @@ qdemandplot(128)
 endpdf()
 ```
 
-## Quantiles conditional on time of week
+## Quantiles as features
 \fontsize{11}{13}\sf
 
 * Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
@@ -731,7 +743,7 @@ ggplot(aes(y=demand, x=time), data=z) +
   guides(fill=FALSE)
 ```
 
-## Quantiles conditional on time of week
+## Quantiles as features
 \fontsize{11}{13}\sf
 
 * Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
@@ -745,7 +757,7 @@ endpdf()
 ```
 
 
-## Quantiles conditional on time of week
+## Quantiles as features
 \fontsize{12}{13}\sf
 
 \centerline{\includegraphics[width=9.8cm,trim=0 35 0 125,clip=TRUE]{quantileplot}}
