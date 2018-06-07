@@ -27,7 +27,7 @@ library(tidyverse)
 source("functions.R")
 source("ggbiplot.R")
 set.seed(20180605)
-options(digits=3,width=60)
+options(digits=3,width=63)
 ```
 
 # M3 forecasting competition
@@ -408,16 +408,26 @@ cal_features(subset(M3,"yearly"),
 \fontsize{10}{10}\sf
 
 ```{r seer2, echo=TRUE}
-fcast_accuracy(M3[1:10],
-  models=c("arima","ets","rw","rwd","theta","nn","snaive","mstl"),
-  database="M3", cal_MASE, h=6)
+fcast_accuracy(M3[1:4],
+  models=c("arima","ets","rw","rwd","theta","nn","snaive"),
+  database="M3", cal_MASE, h=6, length_out=1)
 ```
 
 ## Selecting a forecasting model using seer
 
+\alert{FFORMS: Feature-based FORecast Model Selection}
+
  * We train a random forest using feature inputs and labels equal to best-performing method on test sets.
  * Training data augmented by simulating from fitted models.
  * Entered M4 competition after training on M1, M3, and truncated M4 series + augmented series.
+
+## Forecast model averaging
+
+\alert{FFORMA: Feature-based FORecast Model Averaging}
+
+ * We train a boosted random forest using feature inputs and labels equal to best-performing method on test sets. The optimization criterion is forecast accuracy not classification accuracy.
+ * The probability of each model being best is used to construct a model weight.
+ * All forecasts are averaged using weights.
 
 # Yahoo server metrics
 
