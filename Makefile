@@ -16,5 +16,5 @@ clean:
 	rm -fv $(PRESENTATION).pdf
 	latexmk -c
 	rm -fv $(PRESENTATION).tex
-	rm -rfv $(PRESENTATION)_cache
-	rm -rfv $(PRESENTATION)_files
+	rm -rf $(PRESENTATION)_cache
+	rm -rf $(PRESENTATION)_files

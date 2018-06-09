@@ -428,6 +428,7 @@ fcast_accuracy(M3[1:4],
  * We train a boosted random forest using feature inputs and labels equal to best-performing method on test sets. The optimization criterion is forecast accuracy not classification accuracy.
  * The probability of each model being best is used to construct a model weight.
  * All forecasts are averaged using weights.
+ * \alert{Came second in the M4 competition}
 
 # Yahoo server metrics
 
