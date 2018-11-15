@@ -1,0 +1,877 @@
+---
+title: "Feature-based time series analysis"
+author: "Rob J Hyndman"
+date: "25 November 2018"
+fontsize: 14pt
+output:
+  binb::monash:
+    fig_height: 5
+    fig_width: 8
+    highlight: tango
+    incremental: no
+    keep_tex: yes
+    includes:
+      in_header: preamble.tex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, cache=TRUE,
+  dev.args=list(bg=grey(0.9), pointsize=11))
+library(Mcomp)
+library(anomalous)
+library(data.table)
+library(GGally)
+library(tsfeatures)
+library(tidyverse)
+source("functions.R")
+source("ggbiplot.R")
+set.seed(20180605)
+options(digits=3,width=63)
+```
+
+# M3 forecasting competition
+
+## M3 competition
+\full{M3paper}
+\only<2>{
+\placefig{1}{4}{height=3cm}{SMakridakis}
+\placefig{8.8}{4}{height=3cm}{MHibon}}
+
+## How to plot lots of time series?
+
+```{r m3data}
+scalem3 <- list()
+for(i in 1:3003)
+{
+  scalem3[[i]] <- M3[[i]]$x-min(M3[[i]]$x)
+  scalem3[[i]] <- as.numeric(scalem3[[i]]/max(scalem3[[i]]))
+}
+k <- sample(1:3003,3003)
+files <- c(1:5,seq(10,50,by=10),100,200,500,3003)
+cols <- sample(rainbow(3003))
+for(i in files)
+{
+  fname <- paste("M3data",i,sep="")
+  savepdf(fname)
+  plot(0,0,ylim=range(scalem3),xlim=c(0,1),xlab="Time",ylab="",type="n")
+  for(i in 1:i)
+    lines((1:length(scalem3[[k[i]]]))/length(scalem3[[k[i]]]), scalem3[[k[i]]], col=cols[i])
+  endpdf()
+}
+```
+
+\only<1>{\full{M3data1}}
+\only<2>{\full{M3data2}}
+\only<3>{\full{M3data3}}
+\only<4>{\full{M3data4}}
+\only<5>{\full{M3data5}}
+\only<6>{\full{M3data10}}
+\only<7>{\full{M3data20}}
+\only<8>{\full{M3data30}}
+\only<9>{\full{M3data40}}
+\only<10>{\full{M3data50}}
+\only<11>{\full{M3data100}}
+\only<12>{\full{M3data200}}
+\only<13>{\full{M3data500}}
+\only<14>{\full{M3data3003}}
+
+## Key idea
+\placefig{9.1}{.5}{width=3.6cm}{tukey}
+\begin{textblock}{3}(9.7,5.4)\small\textit{John W Tukey}\end{textblock}
+\begin{textblock}{8}(0.7,1.2)
+\begin{alertblock}{Cognostics}
+Computer-produced diagnostics\\ (Tukey and Tukey, 1985).
+\end{alertblock}
+\end{textblock}\pause
+\vspace*{2.5cm}
+
+\alert{Examples for time series}
+
+  * lag correlation
+  * size and direction of trend
+  * strength of seasonality
+  * timing of peak seasonality
+  * spectral entropy
+
+\vspace*{0.3cm}
+\begin{block}{}
+Called ``features'' in the machine learning literature.
+\end{block}
+
+## An STL decomposition: N2096
+\begin{alertblock}{}
+\centerline{$Y_t = S_t + T_t + R_t$\qquad $S_{t}$ is periodic with mean 0}
+\end{alertblock}
+
+```{r stl, fig.height=4.7}
+forecast::mstl(M3[["N2096"]]$x) %>%
+  autoplot() + ylab("") + xlab("") +
+  scale_x_continuous(breaks=seq(1982,1992,by=1), minor_breaks = NULL)
+```
+
+## Candidate features
+
+\begin{block}{STL decomposition}
+\centerline{$Y_t = S_t + T_t + R_t$}
+\end{block}\pause\fontsize{14}{16}\sf\vspace*{-0.2cm}
+
+* Seasonal period
+* Autocorrelations of data ($Y_1,\dots,Y_T$)
+* Autocorrelations of data ($R_1,\dots,R_T$)
+* Strength of seasonality: $\max\left(0,1 - \frac{\Var(R_t)}{\Var(Y_t-T_t)}\right)$
+* Strength of trend:  $\max\left(0,1 - \frac{\Var(R_t)}{\Var(Y_t-S_t)}\right)$
+* Spectral entropy: $H = - \int_{-\pi}^{\pi} f_y(\lambda) \log f_y(\lambda) d\lambda$, where $f_y(\lambda)$ is spectral density of $Y_t$.\newline
+Low values of $H$ suggest a time series that is easier to forecast (more signal).
+* Optimal Box-Cox transformation of data
+
+## tsfeatures package
+
+```{r m3datalist, include=FALSE}
+M3data <- purrr::map(Mcomp::M3,
+  function(x){
+      tspx <- tsp(x$x)
+      ts(c(x$x,x$xx), start=tspx[1], frequency=tspx[3])
+  })
+
+```
+
+\fontsize{9}{10}\sf
+
+```{r ijf2017, echo=TRUE}
+library(tsfeatures); library(tidyverse)
+lambda_stl <- function(x,...) {
+  lambda <- forecast::BoxCox.lambda(x, lower=0, upper=1, method='loglik')
+  y <- forecast::BoxCox(x, lambda)
+  c(stl_features(y,s.window='periodic', robust=TRUE, ...),
+    lambda=lambda)
+}
+M3Features <- bind_cols(
+    tsfeatures(M3data, c("frequency", "entropy")),
+    tsfeatures(M3data, "lambda_stl", scale=FALSE)) %>%
+  select(frequency, entropy, trend, seasonal_strength, e_acf1, lambda) %>%
+  replace_na(list(seasonal_strength=0)) %>%
+  rename(
+    Frequency = frequency,
+    Entropy = entropy,
+    Trend = trend,
+    Season = seasonal_strength,
+    ACF1 = e_acf1,
+    Lambda = lambda) %>%
+  mutate(Period = as.factor(Frequency))
+```
+
+```{r M3examples, include=FALSE}
+#Consider only long series
+n <- unlist(lapply(M3,function(x){x$n}))
+M3Featureslong <- M3Features[n>50,]
+M3long <- M3[names(M3)[n>50]]
+fnames <- c("M3Freq","M3spec","M3trend","M3season","M3acf","M3lambda")
+k <- NROW(M3Featureslong)
+for(i in 1:6)
+{
+  j <- order(M3Featureslong[[i]])
+  savepdf(paste(fnames[i],"Lo",sep=""), width=20, height=7)
+  print(autoplot(M3long[[j[1]]]$x) +
+    ylab(M3long[[j[1]]]$sn) + xlab(""))
+  endpdf()
+  savepdf(paste(fnames[i],"Hi",sep=""), width=20, height=7)
+  print(autoplot(M3long[[j[k]]]$x) +
+    ylab(M3long[[j[k]]]$sn) + xlab(""))
+  endpdf()
+}
+```
+
+## Distribution of Period for M3
+
+```{r M3period}
+ggally_barDiag(M3Features,
+               mapping = aes(Period), width=0.2,
+               colour="#cc5900", fill="#cc5900")
+```
+
+## Distribution of Seasonality for M3
+
+```{r M3season}
+gghist(M3Features, aes_string("Season"))
+```
+
+\only<2->{
+\begin{textblock}{6}(0.2,3)
+  \begin{alertblock}{Low Seasonality}
+    \includegraphics[width=6cm]{M3seasonLo.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+\only<3>{
+\begin{textblock}{6}(6.6,3)
+  \begin{alertblock}{High Seasonality}
+    \includegraphics[width=6cm]{M3seasonHi.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+
+## Distribution of Trend for M3
+
+```{r M3trend}
+gghist(M3Features, aes_string("Trend"))
+```
+
+\only<2->{
+\begin{textblock}{6}(0.2,3)
+  \begin{alertblock}{Low Trend}
+    \includegraphics[width=6cm]{M3trendLo.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+\only<3>{
+\begin{textblock}{6}(6.6,3)
+  \begin{alertblock}{High Trend}
+    \includegraphics[width=6cm]{M3trendHi.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+
+## Distribution of Residual ACF1 for M3
+
+```{r M3ACF1}
+gghist(M3Features, aes_string("ACF1"))
+```
+
+\only<2->{
+\begin{textblock}{6}(0.2,3)
+  \begin{alertblock}{Low ACF1}
+    \includegraphics[width=6cm]{M3acfLo.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+\only<3>{
+\begin{textblock}{6}(6.6,3)
+  \begin{alertblock}{High ACF1}
+    \includegraphics[width=6cm]{M3acfHi.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+
+## Distribution of Spectral Entropy for M3
+
+```{r M3entropy}
+gghist(M3Features, aes_string("Entropy"))
+```
+
+\only<2->{
+\begin{textblock}{6}(0.2,3)
+  \begin{alertblock}{Low Entropy}
+    \includegraphics[width=6cm]{M3specLo.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+\only<3>{
+\begin{textblock}{6}(6.6,3)
+  \begin{alertblock}{High Entropy}
+    \includegraphics[width=6cm]{M3specHi.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+
+## Feature distributions
+
+```{r ACF1SE}
+ggplot(M3Features, aes(x=Entropy,y=ACF1)) + geom_point()
+```
+
+## Feature distributions
+
+```{r TrendSE}
+ggplot(M3Features, aes(x=Entropy,y=Trend)) + geom_point()
+```
+
+## Feature distributions
+
+```{r ijf2017graphs, dependson="ijf2017"}
+# Fig 1 of paper
+yk_ggally_densityDiag <- wrap(gghist, adjust = 0.5)
+yk_ggally_barDiag <-  wrap(ggally_barDiag, colour="#cc5900",
+                           fill ="#cc5900", width = 0.2)
+M3Features %>%
+  select(Period, Entropy, Trend, Season, ACF1, Lambda) %>%
+  ggpairs(diag = list(continuous = yk_ggally_densityDiag,
+                      discrete = yk_ggally_barDiag),
+          axisLabels = "none",
+          lower=list(continuous = wrap("points", alpha = 0.5,  size=0.2))) -> p
+print(p)
+savepdf("PairwisePlot")
+print(p)
+endpdf()
+```
+
+## Feature distributions
+\fontsize{11}{13}\sf
+
+```r
+M3Features %>%
+  select(Period, Entropy, Trend, Season, ACF1, Lambda) %>%
+  GGally::ggpairs()
+```
+
+\centerline{\includegraphics[width=10.4cm]{PairwisePlot}}
+
+## Dimension reduction for time series
+
+```{r m3sample, include=FALSE}
+j <- sample(1:3003, 100)
+ncol <- 5
+n <- length(j)
+savepdf("M3sample")
+plot(0,0,ylim=c(0,n/ncol),xlim=c(0,ncol*1.2),yaxt="n",xaxt="n",ylab="",xlab="",bty="n",type="n")
+for(i in 1:n)
+  lines( (1:length(scalem3[[j[i]]]))/length(scalem3[[j[i]]]) + ((i-1)%%ncol)*1.1 ,
+         scalem3[[j[i]]] + trunc((i-1)/ncol))
+endpdf()
+```
+
+```{r m3pca, dependson="ijf2017"}
+# 2-d Feature space (Top of Fig 2)
+prcomp(select(M3Features, -Period), scale=TRUE)$x %>%
+  as_tibble() %>%
+  bind_cols(M3Features) %>%
+  ggplot(aes(x=PC1, y=PC2)) +
+    coord_equal(ratio = 1)  +
+    geom_point() -> p
+savepdf("FeatureSpace", height=13, width=13)
+print(p)
+endpdf()
+```
+
+\only<1->{\placefig{0}{1}{width=4cm,height=8.3cm,trim=0 0 200 0,clip=TRUE}{M3sample}}
+\only<2->{\placefig{6}{1}{width=6cm}{PairwisePlot}}
+\only<3>{\placefig{5.2}{5.3}{width=5cm}{FeatureSpace}}
+
+\only<2->{\placefig{4}{2}{width=2cm}{arrow}}
+\only<3>{\placefig{8.4}{4.2}{width=2cm,angle=-90}{arrow}}
+
+\only<2->{\begin{textblock}{2.1}(4,2.6)
+\begin{alertblock}{}\small
+Feature calculation
+\end{alertblock}
+\end{textblock}}
+
+\only<3->{\begin{textblock}{2.8}(9.7,4.1)
+\begin{alertblock}{}\small
+Principal component decomposition
+\end{alertblock}
+\end{textblock}}
+
+## M3 feature space
+\fontsize{11}{11}\sf
+
+```r
+prcomp(select(M3Features, -Period), scale=TRUE)$x %>%
+  ggplot(aes(x=PC1, y=PC2))
+```
+
+\vspace*{-0.2cm}
+
+\includegraphics[width=8.2cm]{FeatureSpace}
+
+\begin{textblock}{4}(8,3)
+\begin{block}{}\fontsize{12}{13}\sf
+First two PCs explain 58.5\% of the variance.
+\end{block}
+\end{textblock}
+
+## M3 feature space
+
+```{r m3biplot, dependson="m3pca",fig.width=5.3,fig.height=4.5}
+prcomp(select(M3Features, -Period), scale=TRUE) %>%
+ ggbiplot(alpha=0.2, scale=0) + coord_equal(ratio = 1)
+```
+
+## M3 feature space
+
+```{r m3pca1, dependson="m3pca", fig.width=6, fig.height=4.5}
+ p + geom_point(aes(col=Period)) +
+    coord_equal(ratio = 1)
+```
+
+## Selecting a forecasting model using seer
+\fontsize{10}{10}\sf
+
+```{r seer1, echo=TRUE}
+library(seer)
+cal_features(subset(M3,"yearly"),
+             h=6, database="M3",  highfreq=FALSE) %>%
+  head()
+```
+
+## Selecting a forecasting model using seer
+\fontsize{10}{10}\sf
+
+```{r seer2, echo=TRUE}
+fcast_accuracy(M3[1:4],
+  models=c("arima","ets","rw","rwd","theta","nn","snaive"),
+  database="M3", cal_MASE, h=6, length_out=1)
+```
+
+## Selecting a forecasting model using seer
+
+\alert{FFORMS: Feature-based FORecast Model Selection}
+
+ * We train a random forest using feature inputs and labels equal to best-performing method on test sets.
+ * Training data augmented by simulating from fitted models.
+ * Entered M4 competition after training on M1, M3, and truncated M4 series + augmented series.
+
+## Forecast model averaging
+
+\alert{FFORMA: Feature-based FORecast Model Averaging}
+
+ * We use xgboost with feature inputs and labels equal to best-performing method on test sets. The optimization criterion is forecast accuracy not classification accuracy.
+ * The probability of each model being best is used to construct a model weight.
+ * All forecasts are averaged using weights.
+ * \alert{Came second in the M4 competition}
+
+# Yahoo server metrics
+
+## Yahoo server metrics
+\fontsize{13}{15}\sf\vspace*{-0.2cm}
+
+  * Tens of thousands of time series collected at one-hour intervals over 1--2 months.
+  * Consisting of several server metrics (e.g. CPU usage and paging views) from many server farms globally.
+  * Aim: find unusual (anomalous) time series.
+
+\placefig{0}{4.6}{width=13.7cm, trim=0 20 0 220, clip=TRUE}{serverfarm}
+\vspace*{10cm}
+
+## Yahoo server metrics
+\vspace*{0.2cm}\par
+
+```{r yahoodata}
+k <- sample(NCOL(dat0), 10)
+savepdf("yahoodata1", width=15, height=12)
+p <- autoplot(dat0[,k], facet=TRUE) + xlab("Days") + ylab("")
+print(p)
+endpdf()
+k <- sample(NCOL(dat1), 10)
+savepdf("yahoodata2", width=15, height=12)
+p <- autoplot(dat1[,k], facet=TRUE) + xlab("Days") + ylab("")
+print(p)
+endpdf()
+k <- sample(NCOL(dat2), 10)
+savepdf("yahoodata3", width=15, height=12)
+p <- autoplot(dat2[,k], facet=TRUE) + xlab("Days") + ylab("")
+print(p)
+endpdf()
+```
+
+
+\only<1>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
+clip=true,trim=40 0 0 0]{yahoodata1}}}
+\only<2>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
+clip=true,trim=40 0 0 0]{yahoodata2}}}
+\only<3>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
+clip=true,trim=40 0 0 0]{yahoodata3}}}
+
+## Yahoo server metrics
+\fontsize{11}{11.8}\sf\vspace*{-0.2cm}
+
+* **ACF1**: first order autocorrelation = $\text{Corr}(Y_t,Y_{t-1})$
+* Strength of **trend** and **seasonality** based on STL
+* Size of seasonal **peak** and **trough**
+* Spectral **entropy**
+* **Lumpiness**: variance of block variances (block size 24).
+* **Spikiness**: variances of leave-one-out variances of STL remainders.
+* **Level shift**: Maximum difference in trimmed means of consecutive moving windows of size 24.
+* **Variance change**: Max difference in variances of consecutive moving windows of size 24.
+* **Flat spots**: Discretize sample space into 10 equal-sized intervals. Find max run length in any interval.
+* Number of **crossing points** of mean line.
+ * **Kullback-Leibler score**:
+      Maximum of $D_{KL}(P\|Q) = \int P(x)\ln P(x)/ Q(x) dx$
+       where $P$ and $Q$ are estimated by kernel density estimators applied to
+       consecutive windows of size 48.
+* **Change index**: Time of maximum KL score
+
+## Feature space
+\fontsize{10}{10}\sf
+
+```r
+library(tsfeatures); library(tidyverse)
+library(anomalous) # For data
+yahoo <- cbind(dat0, dat1, dat2, dat3)
+hwl <- bind_cols(
+         tsfeatures(yahoo,
+           c("acf_features","entropy","lumpiness",
+             "flat_spots","crossing_points")),
+         tsfeatures(yahoo,"stl_features",
+         	    s.window='periodic', robust=TRUE),
+         tsfeatures(yahoo, "max_kl_shift", width=48),
+         tsfeatures(yahoo,
+           c("mean","var"), scale=FALSE, na.rm=TRUE),
+         tsfeatures(yahoo,
+           c("max_level_shift","max_var_shift"), trim=TRUE)) %>%
+  select(mean, var, x_acf1, trend,
+         seasonal_strength, peak, trough,
+         entropy, lumpiness, spike, max_level_shift,
+         max_var_shift, flat_spots, crossing_points,
+         max_kl_shift, time_kl_shift)
+```
+
+## Feature space
+\fontsize{11}{11}\sf
+
+```{r yahoo, fig.height=4, fig.width=4}
+yahoo <- cbind(dat0, dat1, dat2, dat3)
+hwl <- bind_cols(
+         tsfeatures(yahoo,
+           c("acf_features","entropy","lumpiness",
+             "flat_spots","crossing_points")),
+         tsfeatures(yahoo,"stl_features", s.window='periodic', robust=TRUE),
+         tsfeatures(yahoo, "max_kl_shift", width=48),
+         tsfeatures(yahoo,
+           c("mean","var"), scale=FALSE, na.rm=TRUE),
+         tsfeatures(yahoo,
+           c("max_level_shift","max_var_shift"), trim=TRUE)) %>%
+  select(mean, var, x_acf1, trend,
+         seasonal_strength, peak, trough,
+         entropy, lumpiness, spike, max_level_shift, max_var_shift, flat_spots,
+         crossing_points, max_kl_shift, time_kl_shift)
+```
+
+```{r yahoo2, dependson="yahoo"}
+pc <- prcomp(na.omit(hwl), scale=TRUE)$x %>%
+  as_tibble()
+p <- ggplot(pc, aes(x=PC1, y=PC2)) +
+    coord_equal(ratio = 1)  +
+    geom_point()
+savepdf("YahooFeatureSpace", height=13, width=13)
+print(p)
+endpdf()
+```
+
+```r
+pc <- prcomp(na.omit(hwl), scale=TRUE)$x %>% as_tibble()
+ggplot(pc, aes(x=PC1, y=PC2)) + geom_point()
+```
+
+\vspace*{-0.2cm}
+
+\includegraphics[width=5.8cm]{YahooFeatureSpace}
+
+
+## Feature space
+
+```{r yahoobiplot, fig.width=5, fig.height=6}
+prcomp(na.omit(hwl), scale=TRUE) %>%
+ ggbiplot(alpha=0.2, scale=0) +
+ coord_equal(ratio = 1)
+```
+
+\only<2>{\begin{textblock}{4}(8,3)\fontsize{11}{11}\sf
+\begin{alertblock}{\fontsize{11}{11}\sffamily What is ``anomalous''?}
+\begin{itemize}\tightlist
+\item We need a measure of the ``anomalousness'' of a time series.
+\item Rank points based on their local density using a bivariate kernel density estimate.
+\end{itemize}
+\end{alertblock}
+\end{textblock}}
+
+
+## Finding weird time series
+\fontsize{10}{10}\sf
+
+```{r hdryahoo, dependson="yahoo", fig.height=4, fig.width=6.66}
+library(hdrcde)
+savepdf("HDRYahoo", width=13, height=13)
+hdrscatterplot(pc[,1], pc[,2], noutliers=5) + coord_equal(ratio=1) +
+  xlab("PC1") + ylab("PC2")
+endpdf()
+```
+
+```r
+hdrcde::hdrscatterplot(pc[,1], pc[,2], noutliers=5)
+```
+
+\vspace*{-0.25cm}
+\includegraphics[width=7.5cm]{HDRYahoo}
+
+\begin{textblock}{4.8}(7.7,6.9)\fontsize{10}{10}\sf
+\begin{alertblock}{\fontsize{10}{10}\sffamily Highest Density Regions}
+\begin{itemize}\tightlist
+\item Estimate using \texttt{hdrcde} package
+\item Highlight outlying points as those with lowest density.
+\end{itemize}
+\end{alertblock}
+\end{textblock}
+
+## Stray algorithm
+
+```{r stray, echo=TRUE}
+library(stray)
+find_HDoutliers(hwl)
+```
+
+ * Uses extreme value theory applied to nearest neighbour distances between observations.
+ * Works directly on high-dimensional data (no need to do PCA).
+ * Modification of HDoutliers algorithm of Lee Wilkinson (HDoutliers package).
+
+\placefig{10}{0.1}{width=2.5cm}{straysticker}
+
+
+## Stray algorithm
+
+```{r stray2, dependson='stray'}
+outliers <- find_HDoutliers(na.omit(hwl))
+autoplot(yahoo[,outliers[1]]) + ylab("") + ggtitle(paste("Series",outliers[1]))
+```
+
+\only<2>{\begin{textblock}{4.5}(8,7)
+	\begin{alertblock}{}
+	Some of my features might be sensitive to missing values.
+	\end{alertblock}
+	\end{textblock}}
+
+# Irish smart metres
+
+```{r load}
+load("DT.rda")
+load("qdemand.rda")
+load("jsdmat.rda")
+```
+
+## Irish smart metre data
+
+\centerline{\includegraphics[width=1.18\linewidth]{SMARTGRID.jpg}}
+  \vspace{-.85cm}
+  \begin{flushright}
+    { \tiny Figure: \url{http://solutions.3m.com}}
+  \end{flushright}\vspace*{-0.4cm}\fontsize{12}{13}\sf
+
+ * 500 households from smart metering trial
+ * Electricity consumption at 30-minute intervals\newline between 14 July 2009 and 31 December 2010
+ * Heating/cooling energy usage excluded
+
+## Irish smart metre data
+
+```{r timeplot1}
+id <- 128
+idlist <- unique(DT[,id])
+if(id <= 500)
+  id <- idlist[id]
+
+# Subset of DT
+j <- (DT[,id]==id)
+z <- DT[j, ]
+z$time <- z$day - 196 + z$period/48
+
+p <- ggplot(aes(y=demand, x=time), data=z) +
+  geom_line() +
+  ylab("Demand (kWh)") + xlab("Days") +
+  ggtitle(paste("Demand for ID:",id)) +
+  guides(fill=FALSE)
+p
+savepdf("timeplot", height=5, width=15)
+print(p)
+endpdf()
+```
+
+## Irish smart metre data
+
+```{r timeplot3}
+id <- 12
+idlist <- unique(DT[,id])
+if(id <= 500)
+  id <- idlist[id]
+
+# Subset of DT
+j <- (DT[,id]==id)
+z <- DT[j, ]
+z$time <- z$day - 196 + z$period/48
+
+ggplot(aes(y=demand, x=time), data=z) +
+  geom_line() +
+  ylab("Demand (kWh)") + xlab("Days") +
+  ggtitle(paste("Demand for ID:",id)) +
+  guides(fill=FALSE)
+```
+
+## Quantiles as features
+\fontsize{11}{13}\sf
+
+* Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
+* $336$ probability distributions per household.
+
+```{r timeplot1repeat, fig.height=4.2}
+id <- 128
+idlist <- unique(DT[,id])
+if(id <= 500)
+  id <- idlist[id]
+
+# Subset of DT
+j <- (DT[,id]==id)
+z <- DT[j, ]
+z$time <- z$day - 196 + z$period/48
+
+ggplot(aes(y=demand, x=time), data=z) +
+  geom_line() +
+  ylab("Demand (kWh)") + xlab("Days") +
+  ggtitle(paste("Demand for ID:",id)) +
+  guides(fill=FALSE)
+```
+
+## Quantiles as features
+\fontsize{11}{13}\sf
+
+* Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
+* $336$ probability distributions per household.
+
+```{r qdemandplot1, fig.height=4.2}
+qdemandplot(128)
+savepdf("quantileplot")
+qdemandplot(128)
+endpdf()
+```
+
+## Quantiles as features
+\fontsize{11}{13}\sf
+
+* Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
+* $336$ probability distributions per household.
+
+```{r timeplot3repeat, fig.height=4.2}
+id <- 12
+idlist <- unique(DT[,id])
+if(id <= 500)
+  id <- idlist[id]
+
+# Subset of DT
+j <- (DT[,id]==id)
+z <- DT[j, ]
+z$time <- z$day - 196 + z$period/48
+
+ggplot(aes(y=demand, x=time), data=z) +
+  geom_line() +
+  ylab("Demand (kWh)") + xlab("Days") +
+  ggtitle(paste("Demand for ID:",id)) +
+  guides(fill=FALSE)
+```
+
+## Quantiles as features
+\fontsize{11}{13}\sf
+
+* Compute sample quantiles at $p=0.01,0.02,\dots, 0.99$ for each household and each half-hour of the week.
+* $336$ probability distributions per household.
+
+```{r qdemandplot3, fig.height=4.2, message=FALSE, warning=FALSE}
+qdemandplot(12)
+savepdf("quantile2plot")
+qdemandplot(12)
+endpdf()
+```
+
+
+## Quantiles as features
+\fontsize{12}{13}\sf
+
+\centerline{\includegraphics[width=9.8cm,trim=0 35 0 125,clip=TRUE]{quantileplot}}
+
+ - Sample quantiles better than kernel density estimate:
+      * presence of zeros
+      * non-negative support
+      * high skewness
+ - Avoids missing data issues and variation in series length
+ - Avoids timing of household events, holidays, etc.
+ - Allows clustering of households based on probabilistic behaviour rather than coincident behaviour.
+ - Allows identification of anomalous households.
+ - Allows estimation of typical household behaviour.
+
+## Pairwise distances
+
+\placefig{0.1}{1.5}{width=5.5cm, height=1.8cm, keepaspectratio=false}{timeplot}
+\placefig{7.2}{1.5}{width=5.5cm, height=1.8cm, keepaspectratio=false,trim=0 35 0 125,clip=TRUE}{quantileplot}
+\begin{textblock}{3}(5.7,2.2)\LARGE
+$\longrightarrow$
+\end{textblock}
+\vspace*{.9cm}\fontsize{13}{15}\sf
+
+ * The time series of $535\times48$ observations per household is mapped to a set of $7\times48\times99$ quantiles giving a bivariate surface for each household.
+
+ * Can we compute pairwise distances between all households?
+
+\placefig{0.1}{7.5}{width=5.5cm, height=1.8cm, keepaspectratio=false,trim=0 35 0 125,clip=TRUE}{quantileplot}
+\placefig{7.2}{7.5}{width=5.5cm, height=1.8cm, keepaspectratio=false,trim=0 35 0 125,clip=TRUE}{quantile2plot}
+\begin{textblock}{1.48}(5.65,8.2)
+$\leftarrow\hfill~?\hfill\rightarrow$\\\fontsize{11}{12}\sf
+\hfill Distance \hfill
+\end{textblock}
+
+## Pairwise distances
+\fontsize{14}{15}\sf
+
+### Jensen-Shannon distance between two households
+$$\Delta_{ij} = \sum_{t=1}^{7\times 48} \text{JS}(p_t,q_t)$$
+
+### Similarity between two households
+$$
+  w_{ij} = \exp(-\Delta_{ij}^2/h^2).
+$$
+
+### Laplacian eigenmaps
+
+ * Laplacian eigenmap maps high-dimensional space to 2d space while preserving smallest distances, but not largest distances.
+ * We can use this to view the distances between the conditional densities of households
+
+## Outliers computed in embedded space:
+
+```{r embedding}
+elecembed <- embedding(jsdmat, m=2)
+plot(elecembed, embedded=TRUE, noutliers=3) +
+  xlim(-2.7,1.9) +
+  ggtitle("Laplacian embedding (HDRs on embedded space)")
+```
+
+## Most typical household
+
+```{r typical, dependson='embedding'}
+# Look at modal observations
+fxyhi <- kdedist(elecembed$distances, bandwidth=1e5)
+mode1 <- order(fxyhi,decreasing=TRUE)[1]
+mode2 <- order(fxyhi,decreasing=TRUE)[2]
+mode3 <- order(fxyhi,decreasing=TRUE)[3]
+qdemandplot(mode1)
+```
+
+## Most anomalous household
+
+```{r outlier1, dependson='typical'}
+outlier1 <- order(fxyhi,decreasing=FALSE)[1]
+qdemandplot(outlier1)
+```
+
+# Packages
+
+## Packages
+\fontsize{14}{14}\sf
+
+ * **tsfeatures**: compute time series features. \newline\alert{github.com/robjhyndman/tsfeatures}
+ * **hdrcde**: scatterplots with bivariate HDRs. \newline\alert{CRAN | github.com/robjhyndman/hdrcde}
+ * **stray**: finding outliers in high dimensions. \newline\alert{github.com/pridiltal/stray}
+ * **oddstream**: finding outliers in streaming data. \newline\alert{github.com/pridiltal/oddstream}
+ * **seer**: selecting forecasting model using features. \newline\alert{github.com/thiyangt/seer}
+ * **Mcomp**: M3 data. \newline\alert{CRAN | github.com/robjhyndman/Mcomp}
+ * **anomalous**: yahoo data. \newline\alert{github.com/robjhyndman/anomalous}
+
+## Acknowledgments
+
+
+###
+\fontsize{11}{11}\sf
+\centering\begin{tabular}{p{3.5cm}p{3.6cm}p{3.5cm}}
+\includegraphics[height=3cm]{earowang} &
+\includegraphics[height=3cm]{yanfei} &
+\includegraphics[height=3cm]{dilini}\\
+Earo Wang  & Yanfei Kang & Dilini Talagala \\
+\includegraphics[height=3cm]{thiyanga} &
+\includegraphics[height=3cm]{pablo} &
+\includegraphics[height=3cm]{mitch}\\
+Thiyanga Talagala & Pablo Montero-Manso & Mitchell O'Hara-Wild
+\end{tabular}
+
+
