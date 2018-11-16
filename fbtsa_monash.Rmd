@@ -781,19 +781,21 @@ hdrcde::hdrscatterplot(pc[,1], pc[,2], noutliers=5)
 
 ## Acknowledgments
 
-
-###
-\fontsize{11}{11}\sf
-\centering\begin{tabular}{p{3.2cm}p{3.4cm}p{3.4cm}}
-\includegraphics[height=3cm, width=10cm, keepaspectratio]{earowang} &
-\includegraphics[height=3cm, width=10cm, keepaspectratio]{yanfei} &
-\includegraphics[height=3cm, width=10cm, keepaspectratio]{dilini}\\
-Earo Wang  & Yanfei Kang & Dilini Talagala \\
-\includegraphics[height=3cm, width=10cm, keepaspectratio]{thiyanga} &
-\includegraphics[height=3cm, width=10cm, keepaspectratio]{pablo} &
-\includegraphics[height=3cm, width=10cm, keepaspectratio]{mitch}\\
-Thiyanga Talagala & Pablo Montero-Manso\hspace*{-1cm} & Mitchell O'Hara-Wild
+\begin{textblock}{12.5}(0.2,1.2)
+\begin{block}{}\fontsize{9}{10}\sf
+\centering\begin{tabular}{p{2.4cm}p{2.9cm}p{2.6cm}p{3.2cm}}
+\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{earowang} &
+\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{kate} &
+\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{dilini} &
+\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{george}\\
+Earo Wang  & Kate Smith-Miles & Dilini Talagala & George Athanasopoulos\\
+\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{thiyanga} &
+\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{pablo} &
+\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{mitch} &
+\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{yanfei}\\
+Thiyanga Talagala & Pablo Montero-Manso\hspace*{-1cm} & Mitchell \rlap{O'Hara-Wild} & Yanfei Kang
 \end{tabular}
-
+\end{block}
+\end{textblock}
 
 
