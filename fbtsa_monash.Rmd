@@ -779,21 +779,23 @@ hdrcde::hdrscatterplot(pc[,1], pc[,2], noutliers=5)
 
  * \alert{anomalous}: yahoo data. \newline\url{github.com/robjhyndman/anomalous}
 
-## Acknowledgments
+## Acknowledgements
 
 \begin{textblock}{12.5}(0.2,1.2)
 \begin{block}{}\fontsize{9}{10}\sf
-\centering\begin{tabular}{p{2.4cm}p{2.9cm}p{2.6cm}p{3.2cm}}
-\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{earowang} &
-\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{kate} &
-\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{dilini} &
-\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{george}\\
-Earo Wang  & Kate Smith-Miles & Dilini Talagala & George Athanasopoulos\\
-\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{thiyanga} &
-\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{pablo} &
-\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{mitch} &
-\includegraphics[height=2.5cm, width=10cm, keepaspectratio]{yanfei}\\
-Thiyanga Talagala & Pablo Montero-Manso\hspace*{-1cm} & Mitchell \rlap{O'Hara-Wild} & Yanfei Kang
+\centering\begin{tabular}{p{3.2cm}p{3.2cm}p{3.2cm}}
+\includegraphics[height=2.1cm, width=10cm, keepaspectratio]{dilini} &
+\includegraphics[height=2.1cm, width=10cm, keepaspectratio]{kate} &
+\includegraphics[height=2.1cm, width=10cm, keepaspectratio]{mitch}\\
+Dilini Talagala  & Kate Smith-Miles &  Mitchell \rlap{O'Hara-Wild} \\
+\includegraphics[height=2.1cm, width=10cm, keepaspectratio]{earowang} &
+\includegraphics[height=2.1cm, width=10cm, keepaspectratio]{thiyanga} &
+\includegraphics[height=2.1cm, width=10cm, keepaspectratio]{pablo} \\
+Earo Wang & Thiyanga Talagala & Pablo \rlap{Montero-Manso} \\
+\includegraphics[height=2.1cm, width=10cm, keepaspectratio]{george} &
+\includegraphics[height=2.1cm, width=10cm, keepaspectratio]{yanfei}&
+\includegraphics[height=2.1cm, width=10cm, keepaspectratio]{sevvandi}\\
+George Athanasopoulos & Yanfei Kang & Sevvandi \rlap{Kandanaarachchi}
 \end{tabular}
 \end{block}
 \end{textblock}
