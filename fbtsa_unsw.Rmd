@@ -1,0 +1,1258 @@
+---
+title: "Feature-based time series analysis"
+author: "Rob J Hyndman"
+date: "27 September 2019"
+fontsize: 14pt
+output:
+  binb::monash:
+    fig_height: 5
+    fig_width: 8
+    highlight: tango
+    incremental: no
+    keep_tex: yes
+    colortheme: monashblue
+    toc: yes
+    includes:
+      in_header: preamble.tex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE, cache = TRUE,
+  dev.args = list(bg = grey(0.9), pointsize = 11)
+)
+library(tidyverse)
+library(tsibble)
+library(feasts)
+library(lubridate)
+savepdf <- function(file, width=16, height=10) {
+  fname <<- paste("figs/",file,".pdf",sep="")
+  pdf(fname, width=width/2.54, height=height/2.54, pointsize=10, bg='white')
+  par(mgp=c(2.2,0.45,0), tcl=-0.4, mar=c(3.3,3.6,1.1,1.1))
+}
+endpdf <- function() {
+  crop::dev.off.crop(fname)
+}
+gghist <- function(data, mapping, ...) {
+  x <- eval_data_col(data, mapping$x)
+  bw <- 0.2*bw.nrd0(x) + 0.8*bw.SJ(x)
+  p <- ggplot(data, mapping) +
+    geom_density(col=NA, fill="#cc5900", bw=bw)
+  return(p)
+}
+source("ggbiplot.R")
+set.seed(20190927)
+options(digits = 3, width = 63)
+```
+
+# Visualization
+
+## M3 competition
+\full{M3paper}
+\only<2>{
+\placefig{1}{4}{height=3cm, width=10cm, keepaspectratio=true}{SMakridakis}
+\placefig{8.8}{4}{height=3cm, width=10cm, keepaspectratio=true}{MHibon}}
+
+## How to plot lots of time series?
+
+```{r m3data, message=FALSE}
+m3totsibble <- function(z) {
+  rbind(
+    as_tsibble(z$x) %>% mutate(Type="Training"),
+    as_tsibble(z$xx) %>% mutate(Type="Test")
+  ) %>%
+  mutate(
+    st = z$st,
+    type = z$type,
+    period = z$period,
+    description = z$description,
+    sn = z$sn,
+  ) %>%
+  as_tibble()
+}
+m3yearly <- Mcomp::M3 %>%
+  subset("yearly") %>%
+  purrr::map_dfr(m3totsibble) %>%
+  as_tsibble(index=index, key=c(sn,period,st)) %>%
+  mutate(z = scale(value))
+m3quarterly <- Mcomp::M3 %>%
+  subset("quarterly") %>%
+  purrr::map_dfr(m3totsibble) %>%
+  mutate(index = yearquarter(index)) %>%
+  as_tsibble(index=index, key=c(sn,period,st))
+m3monthly <- Mcomp::M3 %>%
+  subset("monthly") %>%
+  purrr::map_dfr(m3totsibble) %>%
+  mutate(index = yearmonth(index)) %>%
+  as_tsibble(index=index, key=c(sn,period,st))
+m3other <- Mcomp::M3 %>%
+  subset("other") %>%
+  purrr::map_dfr(m3totsibble) %>%
+  as_tsibble(index=index, key=c(sn,period,st))
+```
+
+```{r scalem3}
+scalem3 <- list()
+for (i in seq(3003)) {
+  scalem3[[i]] <- Mcomp::M3[[i]]$x - min(Mcomp::M3[[i]]$x)
+  scalem3[[i]] <- as.numeric(scalem3[[i]] / max(scalem3[[i]]))
+}
+k <- sample(1:3003, 3003)
+files <- c(1:5, seq(10, 50, by = 10), 100, 200, 500, 3003)
+cols <- sample(rainbow(3003))
+for (i in files) {
+  fname <- paste("M3data", i, sep = "")
+  savepdf(fname)
+  plot(0, 0, ylim = range(scalem3), xlim = c(0, 1), xlab = "Time", ylab = "", type = "n")
+  for (i in 1:i)
+    lines((1:length(scalem3[[k[i]]])) / length(scalem3[[k[i]]]), scalem3[[k[i]]], 
+          col = cols[i])
+  endpdf()
+}
+```
+
+\only<1>{\full{M3data1}}
+\only<2>{\full{M3data2}}
+\only<3>{\full{M3data3}}
+\only<4>{\full{M3data4}}
+\only<5>{\full{M3data5}}
+\only<6>{\full{M3data10}}
+\only<7>{\full{M3data20}}
+\only<8>{\full{M3data30}}
+\only<9>{\full{M3data40}}
+\only<10>{\full{M3data50}}
+\only<11>{\full{M3data100}}
+\only<12>{\full{M3data200}}
+\only<13>{\full{M3data500}}
+\only<14>{\full{M3data3003}}
+
+## Key idea
+\placefig{9.1}{.5}{width=3.6cm}{tukey}
+\begin{textblock}{3}(9.7,5.4)\small\textit{John W Tukey}\end{textblock}
+\begin{textblock}{8}(0.7,1.2)
+\begin{alertblock}{Cognostics}
+Computer-produced diagnostics\\ (Tukey and Tukey, 1985).
+\end{alertblock}
+\end{textblock}\pause
+\vspace*{2.5cm}
+
+\alert{Examples for time series}
+
+  * lag correlation
+  * size and direction of trend
+  * strength of seasonality
+  * timing of peak seasonality
+  * spectral entropy
+
+\vspace*{0.3cm}
+\begin{block}{}
+Called ``features'' in the machine learning literature.
+\end{block}
+
+## An STL decomposition: N2096
+\begin{alertblock}{}
+\centerline{$Y_t = S_t + T_t + R_t$\qquad $S_{t}$ is periodic with mean 0}
+\end{alertblock}
+
+```{r stl, fig.height=4.7}
+m3monthly %>%
+  filter(sn=="N2096") %>%
+  STL(value) %>%
+  autoplot() + ylab("") + xlab("")  +
+  scale_x_date(breaks=seq(as_date("1982-01-01"), as_date("1992-01-01"), by = "year"),
+               minor_breaks=NULL)
+```
+
+## Candidate features
+
+\begin{block}{STL decomposition}
+\centerline{$Y_t = S_t + T_t + R_t$}
+\end{block}\pause\fontsize{14}{16}\sf\vspace*{-0.2cm}
+
+* Seasonal period
+* Autocorrelations of data ($Y_1,\dots,Y_T$)
+* Autocorrelations of data ($R_1,\dots,R_T$)
+* Strength of seasonality: $\max\left(0,1 - \frac{\Var(R_t)}{\Var(Y_t-T_t)}\right)$
+* Strength of trend:  $\max\left(0,1 - \frac{\Var(R_t)}{\Var(Y_t-S_t)}\right)$
+* Spectral entropy: $H = - \int_{-\pi}^{\pi} f_y(\lambda) \log f_y(\lambda) d\lambda$, where $f_y(\lambda)$ is spectral density of $Y_t$.\newline
+Low values of $H$ suggest a time series that is easier to forecast (more signal).
+* Optimal Box-Cox transformation of data
+
+\fontsize{9}{10}\sf
+
+```{r m3_features}
+khs_stl <- function(x, period) {
+  output <- c(n=length(x), frequency=period, feat_spectral(x))
+  lambda <- forecast::BoxCox.lambda(ts(x, frequency=period),
+                      lower=0, upper=1, method='loglik')
+  stlfeatures <- feat_stl(box_cox(x, lambda), .period=period,
+      s.window='periodic', robust=TRUE)
+  output <- c(output, stlfeatures, lambda=lambda)
+  if(period==1L)
+    output <- c(output, seasonal_strength=0)
+  return(output)
+}
+m3_features <- bind_rows(
+    m3yearly %>% features(value, features=list(~ khs_stl(.,1))),
+    m3quarterly %>% features(value, features=list(~ khs_stl(.,4))) %>%
+      rename(seasonal_strength = seasonal_strength_4),
+    m3monthly %>% features(value, features=list(~ khs_stl(.,12))) %>%
+      rename(seasonal_strength = seasonal_strength_12),
+    m3other %>% features(value, features=list(~ khs_stl(.,1)))
+  ) %>%
+  select(sn, n, spectral_entropy, trend_strength, seasonal_strength,
+         frequency, stl_e_acf1, lambda)
+```
+
+```{r M3examples, include=FALSE, dependson="M3Features"}
+m3plot <- function(sn) {
+  m3totsibble(Mcomp::M3[[sn[1]]]) %>%
+  as_tsibble(index=index, key=c(sn,period,st)) %>%
+  autoplot(value) + ylab(sn) + xlab("")
+}
+# Consider only long series for plotting
+m3_long <- m3_features %>% filter(n > 50) 
+fnames <- m3_long %>% select(-n,-sn) %>% colnames()
+for (i in seq_along(fnames)) {
+  savepdf(paste(fnames[i], "Lo", sep = ""), width = 20, height = 7)
+    m3_long %>% 
+      filter(m3_long[,fnames[i]] == min(m3_long[,fnames[i]])) %>%
+      pull(sn) %>% m3plot() %>% print()
+  endpdf()
+  savepdf(paste(fnames[i], "Hi", sep = ""), width = 20, height = 7)
+    m3_long %>% 
+      filter(m3_long[,fnames[i]] == max(m3_long[,fnames[i]])) %>%
+      pull(sn) %>% m3plot() %>% print()
+  endpdf()
+}
+```
+
+## Distribution of Period for M3
+
+```{r M3period, dependson="M3Features"}
+m3_features %>%
+  GGally::ggally_barDiag(mapping = aes(frequency), 
+    binwidth = 0.2, colour = "#cc5900", fill = "#cc5900") +
+  scale_x_continuous(breaks=seq(12), minor_breaks=NULL)
+```
+
+## Distribution of Seasonality for M3
+
+```{r M3season, dependson="M3Features"}
+m3_features %>% gghist(aes(x=seasonal_strength))
+```
+
+\only<2->{
+\begin{textblock}{6}(0.2,3)
+  \begin{alertblock}{Low Seasonality}
+    \includegraphics[width=6cm]{seasonal_strengthLo.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+\only<3>{
+\begin{textblock}{6}(6.6,3)
+  \begin{alertblock}{High Seasonality}
+    \includegraphics[width=6cm]{seasonal_strengthHi.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+
+## Distribution of Trend for M3
+
+```{r M3trend, dependson="M3Features"}
+m3_features %>% gghist(aes(x=trend_strength))
+```
+
+\only<2->{
+\begin{textblock}{6}(0.2,3)
+  \begin{alertblock}{Low Trend}
+    \includegraphics[width=6cm]{trend_strengthLo.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+\only<3>{
+\begin{textblock}{6}(6.6,3)
+  \begin{alertblock}{High Trend}
+    \includegraphics[width=6cm]{trend_strengthHi.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+
+## Distribution of Residual ACF1 for M3
+
+```{r M3ACF1, dependson="M3Features"}
+m3_features %>% gghist(aes(x=stl_e_acf1))
+```
+
+\only<2->{
+\begin{textblock}{6}(0.2,3)
+  \begin{alertblock}{Low ACF1}
+    \includegraphics[width=6cm]{stl_e_acf1Lo.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+\only<3>{
+\begin{textblock}{6}(6.6,3)
+  \begin{alertblock}{High ACF1}
+    \includegraphics[width=6cm]{stl_e_acf1Hi.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+
+## Distribution of Spectral Entropy for M3
+
+```{r M3entropy, dependson="M3Features"}
+m3_features %>% gghist(aes(x=spectral_entropy))
+```
+
+\only<2->{
+\begin{textblock}{6}(0.2,3)
+  \begin{alertblock}{Low Entropy}
+    \includegraphics[width=6cm]{spectral_entropyLo.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+\only<3>{
+\begin{textblock}{6}(6.6,3)
+  \begin{alertblock}{High Entropy}
+    \includegraphics[width=6cm]{spectral_entropyHi.pdf}
+  \end{alertblock}
+\end{textblock}
+}
+
+## Feature distributions
+
+```{r ACF1SE, dependson="M3Features"}
+m3_features %>% 
+  ggplot(aes(x = spectral_entropy, y = stl_e_acf1)) + 
+  geom_point()
+```
+
+## Feature distributions
+
+```{r TrendSE, dependson="M3Features"}
+m3_features %>% 
+  ggplot(aes(x = spectral_entropy, y = trend)) + 
+  geom_point()
+```
+
+## Feature distributions
+
+```{r M3pairs, dependson="M3Features"}
+library(GGally)
+# Fig 1 of paper
+yk_ggally_densityDiag <- wrap(gghist, adjust = 0.5)
+yk_ggally_barDiag <- wrap(ggally_barDiag,
+  colour = "#cc5900",
+  fill = "#cc5900", width = 0.2
+)
+m3_features %>% 
+  mutate(period = as.character(frequency)) %>%
+  select(period, spectral_entropy, trend_strength, seasonal_strength, stl_e_acf1, lambda) %>% 
+  GGally::ggpairs(
+    diag = list(
+      continuous = yk_ggally_densityDiag,
+      discrete = yk_ggally_barDiag
+    ),
+    axisLabels = "none",
+    lower = list(continuous = wrap("points", alpha = 0.5, size = 0.2))
+  ) -> p
+print(p)
+savepdf("PairwisePlot")
+print(p)
+endpdf()
+```
+
+## Dimension reduction for time series
+
+```{r m3sample, include=FALSE, dependson='scalem3'}
+j <- sample(1:3003, 100)
+ncol <- 5
+n <- length(j)
+savepdf("M3sample")
+plot(0, 0, ylim = c(0, n / ncol), xlim = c(0, ncol * 1.2), yaxt = "n", xaxt = "n", ylab = "", xlab = "", bty = "n", type = "n")
+for (i in 1:n)
+  lines(
+    (1:length(scalem3[[j[i]]])) / length(scalem3[[j[i]]]) + ((i - 1) %% ncol) * 1.1,
+    scalem3[[j[i]]] + trunc((i - 1) / ncol)
+  )
+endpdf()
+```
+
+```{r m3pca, dependson="M3Features"}
+# 2-d Feature space (Top of Fig 2)
+prcomp(select(M3Features, -Period), scale = TRUE)$x %>%
+  as_tibble() %>%
+  bind_cols(M3Features) %>%
+  ggplot(aes(x = PC1, y = PC2)) +
+  coord_equal(ratio = 1) +
+  geom_point() -> p
+savepdf("FeatureSpace", height = 13, width = 13)
+print(p)
+endpdf()
+```
+
+\only<1->{\placefig{0}{1}{width=4cm,height=8.3cm,trim=0 0 200 0,clip=TRUE}{M3sample}}
+\only<2->{\placefig{6}{1}{width=6cm}{PairwisePlot}}
+\only<3>{\placefig{5.2}{5.3}{width=5cm}{FeatureSpace}}
+
+\only<2->{\placefig{4}{2}{width=2cm}{arrow}}
+\only<3>{\placefig{8.4}{4.2}{width=2cm,angle=-90}{arrow}}
+
+\only<2->{\begin{textblock}{2.1}(4,2.6)
+\begin{alertblock}{}\small
+Feature calculation
+\end{alertblock}
+\end{textblock}}
+
+\only<3->{\begin{textblock}{2.8}(9.7,4.1)
+\begin{alertblock}{}\small
+Principal component decomposition
+\end{alertblock}
+\end{textblock}}
+
+## M3 feature space
+\fontsize{11}{11}\sf
+
+\vspace*{-0.2cm}
+
+\includegraphics[width=8.2cm]{FeatureSpace}
+
+\begin{textblock}{4}(8,3)
+\begin{block}{}\fontsize{12}{13}\sf
+First two PCs explain 58.5\% of the variance.
+\end{block}
+\end{textblock}
+
+## M3 feature space
+
+```{r m3biplot, dependson="M3Features",fig.width=5.3,fig.height=4.5}
+prcomp(select(M3Features, -Period), scale = TRUE) %>%
+  ggbiplot(alpha = 0.2, scale = 0) + coord_equal(ratio = 1)
+```
+
+## M3 feature space
+
+```{r m3pca1, dependson="m3pca", fig.width=6, fig.height=4.5}
+p + geom_point(aes(col = Period)) +
+  coord_equal(ratio = 1)
+```
+
+## Feature properties
+
+In this analysis, we have restricted features to be
+
+ * ergodic
+ * scale-independent
+
+For other analyses, it may be appropriate to have different requirements.
+
+\vspace*{1cm}\pause
+
+\begin{alertblock}{R package}
+\textbf{github.com/robjhyndman/tsfeatures}
+\end{alertblock}
+
+# Anomaly detection
+
+## Yahoo server metrics
+\fontsize{13}{15}\sf\vspace*{-0.2cm}
+
+  * Tens of thousands of time series collected at one-hour intervals over 1--2 months.
+  * Consisting of several server metrics (e.g. CPU usage and paging views) from many server farms globally.
+  * Aim: find unusual (anomalous) time series.
+
+\placefig{0}{4.6}{width=13.7cm, trim=0 20 0 220, clip=TRUE}{serverfarm}
+\vspace*{10cm}
+
+## Yahoo server metrics
+\vspace*{0.2cm}\par
+
+```{r yahoodata}
+k <- sample(NCOL(dat0), 10)
+savepdf("yahoodata1", width = 15, height = 12)
+p <- autoplot(dat0[, k], facet = TRUE) + xlab("Days") + ylab("")
+print(p)
+endpdf()
+k <- sample(NCOL(dat1), 10)
+savepdf("yahoodata2", width = 15, height = 12)
+p <- autoplot(dat1[, k], facet = TRUE) + xlab("Days") + ylab("")
+print(p)
+endpdf()
+k <- sample(NCOL(dat2), 10)
+savepdf("yahoodata3", width = 15, height = 12)
+p <- autoplot(dat2[, k], facet = TRUE) + xlab("Days") + ylab("")
+print(p)
+endpdf()
+```
+
+
+\only<1>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
+clip=true,trim=40 0 0 0]{yahoodata1}}}
+\only<2>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
+clip=true,trim=40 0 0 0]{yahoodata2}}}
+\only<3>{\centerline{\includegraphics[height=8.1cm,width=12.8cm,keepaspectratio=true,
+clip=true,trim=40 0 0 0]{yahoodata3}}}
+
+## Yahoo server metrics
+\fontsize{11}{11.8}\sf\vspace*{-0.2cm}
+
+* **ACF1**: first order autocorrelation = $\text{Corr}(Y_t,Y_{t-1})$
+* Strength of **trend** and **seasonality** based on STL
+* Size of seasonal **peak** and **trough**
+* Spectral **entropy**
+* **Lumpiness**: variance of block variances (block size 24).
+* **Spikiness**: variances of leave-one-out variances of STL remainders.
+* **Level shift**: Maximum difference in trimmed means of consecutive moving windows of size 24.
+* **Variance change**: Max difference in variances of consecutive moving windows of size 24.
+* **Flat spots**: Discretize sample space into 10 equal-sized intervals. Find max run length in any interval.
+* Number of **crossing points** of mean line.
+ * **Kullback-Leibler score**:
+      Maximum of $D_{KL}(P\|Q) = \int P(x)\ln P(x)/ Q(x) dx$
+       where $P$ and $Q$ are estimated by kernel density estimators applied to
+       consecutive windows of size 48.
+* **Change index**: Time of maximum KL score
+
+## Feature space
+\fontsize{11}{11}\sf
+
+```{r yahoo, fig.height=4, fig.width=4}
+yahoo <- cbind(dat0, dat1, dat2, dat3)
+hwl <- bind_cols(
+  tsfeatures(
+    yahoo,
+    c(
+      "acf_features", "entropy", "lumpiness",
+      "flat_spots", "crossing_points"
+    )
+  ),
+  tsfeatures(yahoo, "stl_features", s.window = "periodic", robust = TRUE),
+  tsfeatures(yahoo, "max_kl_shift", width = 48),
+  tsfeatures(yahoo,
+    c("mean", "var"),
+    scale = FALSE, na.rm = TRUE
+  ),
+  tsfeatures(yahoo,
+    c("max_level_shift", "max_var_shift"),
+    trim = TRUE
+  )
+) %>%
+  select(
+    mean, var, x_acf1, trend,
+    seasonal_strength, peak, trough,
+    entropy, lumpiness, spike, max_level_shift, max_var_shift, flat_spots,
+    crossing_points, max_kl_shift, time_kl_shift
+  )
+```
+
+```{r yahoo2, dependson="yahoo"}
+pc <- prcomp(na.omit(hwl), scale = TRUE)$x %>%
+  as_tibble()
+p <- ggplot(pc, aes(x = PC1, y = PC2)) +
+  coord_equal(ratio = 1) +
+  geom_point()
+savepdf("YahooFeatureSpace", height = 13, width = 13)
+print(p)
+endpdf()
+```
+
+
+\vspace*{-0.2cm}
+
+\includegraphics[width=5.8cm]{YahooFeatureSpace}
+
+
+## Feature space
+
+```{r yahoobiplot, fig.width=5, fig.height=6}
+prcomp(na.omit(hwl), scale = TRUE) %>%
+  ggbiplot(alpha = 0.2, scale = 0) +
+  coord_equal(ratio = 1)
+```
+
+\only<2>{\begin{textblock}{4}(8,3)\fontsize{11}{11}\sf
+\begin{alertblock}{\fontsize{11}{11}\sffamily What is ``anomalous''?}
+\begin{itemize}\tightlist
+\item We need a measure of the ``anomalousness'' of a time series.
+\item Rank points based on their local density using a bivariate kernel density estimate.
+\end{itemize}
+\end{alertblock}
+\end{textblock}}
+
+
+## Finding weird time series
+\fontsize{10}{10}\sf
+
+```{r hdryahoo, dependson="yahoo", fig.height=4, fig.width=6.66}
+library(hdrcde)
+savepdf("HDRYahoo", width = 13, height = 13)
+hdrscatterplot(pc[, 1], pc[, 2], noutliers = 5) + coord_equal(ratio = 1) +
+  xlab("PC1") + ylab("PC2")
+endpdf()
+```
+
+```r
+hdrcde::hdrscatterplot(pc[,1], pc[,2], noutliers=5)
+```
+
+\vspace*{-0.25cm}
+\includegraphics[width=7.5cm]{HDRYahoo}
+
+\begin{textblock}{4.8}(7.7,6.9)\fontsize{10}{10}\sf
+\begin{alertblock}{\fontsize{10}{10}\sffamily Highest Density Regions}
+\begin{itemize}\tightlist
+\item Estimate using \texttt{hdrcde} package
+\item Highlight outlying points as those with lowest density.
+\end{itemize}
+\end{alertblock}
+\end{textblock}
+
+
+## Packages
+\fontsize{14.5}{18}\sf
+
+ * \alert{hdrcde}: scatterplots with bivariate HDRs. \newline CRAN | \url{github.com/robjhyndman/hdrcde}\vspace*{0.4cm}
+
+ * \alert{stray}: finding outliers in high dimensions. \newline\url{github.com/pridiltal/stray}\vspace*{0.4cm}
+
+ * \alert{oddstream}: finding outliers in streaming data. \newline\url{github.com/pridiltal/oddstream}\vspace*{0.4cm}
+
+ * \alert{anomalous}: yahoo data. \newline\url{github.com/robjhyndman/anomalous}
+
+# Forecasting
+
+## Forecast model selection
+
+\alert{Features used to select a forecasting model}\vspace*{10cm}
+
+\begin{textblock}{12}(0.1,2.1)\small
+\begin{multicols}{2}
+  \begin{itemize}\tightlist
+    \item length
+    \item strength of seasonality
+    \item strength of trend
+    \item linearity
+    \item curvature
+    \item spikiness
+    \item stability
+    \item lumpiness
+    \item first ACF value of remainder series
+    \item parameter estimates of Holt's linear trend method
+    \item spectral entropy
+    \item Hurst exponent
+    \item nonlinearity
+    \item parameter estimates of Holt-Winters' additive method
+    \item unit root test statistics
+    \item first ACF value of residual series of linear trend model
+    \item ACF and PACF based features - calculated on both the raw and differenced series
+    \end{itemize}
+\end{multicols}
+\end{textblock}
+
+## \fontsize{16}{16}\bf\sffamily FFORMS: Feature-based FORecast Model Selection
+
+\only<1>{\full{fw1}}
+\only<2>{\full{fw2}}
+\only<3>{\full{fw3}}
+\only<4>{\full{fw4}}
+\only<5>{\full{fw5}}
+\only<6>{\full{fw6}}
+\only<7>{\full{fw7}}
+\only<8>{\full{fw8}}
+\only<9>{\full{fw9}}
+\only<10>{\full{fw10}}
+\only<11>{\full{fw11}}
+\only<12>{\full{fw12}}
+\only<13>{\full{fw13}}
+\only<14>{\full{fw14}}
+
+\vspace*{10cm}
+
+## Application to M competition data
+
+\begin{block}{Experiment 1}
+\centering\small\tabcolsep=0.1cm
+\begin{tabular}{lrrrrr}
+                 & Source & Y      & Q      & M \\
+\midrule
+Observed series  & M1     & 181    & 203    & 617 \\
+Simulated series &        & 362000 & 406000 & 123400 \\
+New series       & M3     & 645    & 756    & 1428
+\end{tabular}
+\end{block}
+\begin{block}{Experiment 2}
+\centering\small\tabcolsep=0.1cm
+\begin{tabular}{lrrrrr}
+                 & Source & Y       & Q       & M \\
+\midrule
+Observed series  & M3     & 645     & 756     & 1428 \\
+Simulated series &        & 1290000 & 1512000 & 285600 \\
+New series       & M1     & 181     & 203     & 617
+\end{tabular}
+\end{block}
+
+
+## Results: Yearly
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+method <- c(
+  "RF-unbalanced", "RF-class priors", "auto.arima", "ets", "WN", "RW", "RWD", "Theta",
+  "RF-unbalanced", "RF-class priors", "auto.arima", "ets", "WN", "RW", "RWD", "Theta"
+)
+Rank <- c(
+  1.50, 1.50, 3.33, 5.00, 8.00, 7.00, 3.67, 6.00,
+  3.50, 2.50, 5.83, 4.67, 9.00, 8.00, 1.00, 3.50
+)
+class <- c(0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1)
+df <- data.frame(method = method, Rank = Rank, class = class)
+ggplot(data = df, aes(x = method, y = Rank, fill = factor(class))) +
+  geom_bar(position = "dodge", stat = "identity") +
+  coord_flip() +
+  scale_x_discrete(
+    limits = c("WN", "RW", "auto.arima", "ets", "Theta", "RWD", "RF-class priors", "RF-unbalanced"),
+	    labels = c("WN", "RW", "auto.arima", "ets", "Theta", "RWD", "RF-class priors", "RF-unbalanced")
+  ) + scale_fill_brewer(
+    breaks = c(1, 0),
+    labels = c("Experiment 1 (new: M3)", "Experiment 2 (new: M1)")
+    , palette = "Set1"
+  ) +
+  theme(
+    axis.title.y = element_blank(), legend.title = element_blank(),
+    text = element_text(size = 20)
+  )
+```
+
+## Results: Quarterly
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+library(ggplot2)
+method <- c(
+  "RF-unbalanced", "RF-class priors", "auto.arima", "ets", "WN", "RW", "RWD", "STL-AR", "Theta", "Snaive",
+  "RF-unbalanced", "RF-class priors", "auto.arima", "ets", "WN", "RW", "RWD", "STL-AR", "Theta", "Snaive"
+)
+Rank <- c(
+  1.00, 2.63, 5.25, 3.00, 10.00, 7.50, 5.38, 8.63, 3.88, 7.75, 2.25,
+  3.13, 4.75, 3.75, 10.00, 7.00, 6.50, 8.34, 2.50, 6.75
+)
+class <- c(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+df <- data.frame(method = method, Rank = Rank, class = class)
+ggplot(data = df, aes(x = method, y = Rank, fill = factor(class))) +
+  geom_bar(position = "dodge", stat = "identity") +
+  coord_flip() +
+  scale_x_discrete(
+    limits = c("WN", "RW", "RWD", "STL-AR", "Snaive", "auto.arima", "ets", "Theta", "RF-class priors", "RF-unbalanced"),
+    labels = c("WN", "RW", "RWD", "STL-AR", "Snaive", "auto.arima", "ets", "Theta", "RF-class priors", "RF-unbalanced")
+  ) + scale_fill_brewer(
+    breaks = c(1, 0),
+    labels = c("Experiment 1 (new: M3)", "Experiment 2 (new: M1)")
+    , palette = "Set1"
+  ) +
+  theme(
+    axis.title.y = element_blank(), legend.title = element_blank(),
+    text = element_text(size = 20)
+  )
+```
+
+## Results: Monthly
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+library(ggplot2)
+method <- c(
+  "RF-unbalanced", "RF-class priors", "auto.arima", "ets", "WN", "RW", "RWD", "STL-AR", "Theta", "Snaive",
+  "RF-unbalanced", "RF-class priors", "auto.arima", "ets", "WN", "RW", "RWD", "STL-AR", "Theta", "Snaive"
+)
+Rank <- c(1.77, 2.83, 4.94, 3.44, 10.00, 7.25, 8.61, 7.38, 2.27, 6.47, 3.22, 2.00, 2.83, 2.72, 10.00, 8.03, 6.89, 7.89, 4.22, 7.19)
+class <- c(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+df <- data.frame(method = method, Rank = Rank, class = class)
+ggplot(data = df, aes(x = method, y = Rank, fill = factor(class))) +
+  geom_bar(position = "dodge", stat = "identity") +
+  coord_flip() +
+  scale_x_discrete(
+    limits = c("WN", "RW", "RWD", "STL-AR", "Snaive", "auto.arima", "ets", "Theta", "RF-class priors", "RF-unbalanced"),
+    labels = c("WN", "RW", "RWD", "STL-AR", "Snaive", "auto.arima", "ets", "Theta", "RF-class priors", "RF-unbalanced")
+  ) + scale_fill_brewer(
+    breaks = c(1, 0),
+    labels = c("Experiment 1 (new: M3)", "Experiment 2 (new: M1)")
+    , palette = "Set1"
+  ) +
+  theme(
+    axis.title.y = element_blank(), legend.title = element_blank(),
+    text = element_text(size = 20)
+  )
+```
+
+
+## \fontsize{15}{15}\sffamily\bfseries FFORMA: Feature-based FORecast Model Averaging
+
+ * Like FFORMS but we use gradient boosted trees rather than a random forest.
+ * The optimization criterion is forecast accuracy not classification accuracy.
+ * The probability of each model being best is used to construct a model weight.
+ * A combination forecast is produced using these weights.
+ * \alert{Came second in the M4 forecasting competition}
+
+## \fontsize{15}{15}\sffamily\bfseries FFORMA: Feature-based FORecast Model Averaging
+
+### Models included
+
+1. Naive
+1. Seasonal naive
+1. Random walk with drift
+1. Theta method
+1. ARIMA
+1. ETS
+1. TBATS
+1. STLM-AR
+1. NNAR
+
+
+## R Packages
+\fontsize{14.5}{19}\sf
+
+ * \alert{seer}: FFORMS --- selecting forecasting model using features. \newline\url{github.com/thiyangt/seer}\vspace*{0.5cm}
+
+ * \alert{M4metalearning}: FFORMA -- forecast combinations using features to choose weights. \newline\url{github.com/robjhyndman/M4metalearning}
+
+# Forecast reconciliation
+
+## Australian tourism
+\full{regions1_with_labels}
+
+## Australian tourism
+
+\begin{textblock}{10}(1,1.5)\small
+\begin{block}{}
+  \begin{itemize}\itemsep=0cm\parskip=0cm
+    \item Quarterly data on visitor night from 1998:Q1 -- 2013:Q4
+    \item From: \textit{National Visitor Survey}, based on annual interviews of 120,000 Australians aged 15+, collected by Tourism Research Australia.
+    \item Split by 7 states, 27 zones and 76 regions (a geographical hierarchy)
+    \item Also split by purpose of travel
+      \begin{itemize}
+        \item Holiday
+        \item Visiting friends and relatives (VFR)
+        \item Business
+        \item Other
+      \end{itemize}
+    \item 304 bottom-level series
+  \end{itemize}
+\end{block}
+\end{textblock}
+
+## Spectacle sales
+
+\placefig{1}{1.4}{width=9.5cm}{spectacles.jpg}
+\vspace*{4.8cm}
+
+ * Monthly UK sales data from 2000 -- 2014
+ * Provided by a large spectacle manufacturer
+ * Split by brand (26), gender (3), price range (6), materials (4), and stores (600)
+ * About 1 million bottom-level series
+
+## Hierarchical time series
+\fontsize{13}{14}\sf
+
+A \alert{\textbf{hierarchical time series}} is a collection of several time series that are linked together in a hierarchical structure.
+
+\begin{minipage}{9.6cm}
+\begin{block}{}
+\begin{tikzpicture}
+\tikzstyle{every node}=[ellipse,draw,inner sep=0.2pt,fill=red!15]
+\tikzstyle[level distance=.1cm]
+\tikzstyle[sibling distance=7cm]
+\tikzstyle{level 1}=[sibling distance=33mm,set style={{every node}+=[fill=blue!15]}]
+\tikzstyle{level 2}=[sibling distance=10mm,font=\small,set style={{every node}+=[fill=yellow]}]
+\node{Total}[edge from parent fork down]
+ child {node {A}
+   child {node {AA}}
+   child {node {AB}}
+   child {node {AC}}
+ }
+ child {node {B}
+   child {node {BA}}
+   child {node {BB}}
+   child {node {BC}}
+ }
+ child {node {C}
+   child {node {CA}}
+   child {node {CB}}
+   child {node {CC}}
+ };
+\end{tikzpicture}
+\end{block}
+\end{minipage}
+
+\pause\alert{Examples}\vspace*{-0.2cm}
+
+ * Tourism demand by state and region
+
+## Grouped time series
+\fontsize{13}{14}\sf
+
+A \alert{\textbf{grouped time series}} is a collection of time series that can be grouped together in a number of non-hierarchical ways.
+
+\begin{minipage}{9.2cm}
+\begin{block}{}
+\begin{tikzpicture}[level distance=1.5cm]
+\tikzstyle{every node}=[ellipse,draw,inner sep=0.2pt,outer sep=0pt, fill=red!15]
+\tikzstyle{level 1}=[sibling distance=23mm,set style={{every node}+=[fill=blue!15]},level distance=1cm]
+\tikzstyle{level 2}=[sibling distance=10mm,font=\small,set style={{every node}+=[fill=yellow]}, level distance=0.9cm]
+\node{Total}[edge from parent fork down]
+ child {node {A}
+   child {node {AX}}
+   child {node {AY}}
+ }
+ child {node {B}
+   child {node {BX}}
+   child {node {BY}}
+ };
+\end{tikzpicture}\hspace*{1cm}
+\begin{tikzpicture}[level distance=1.5cm]
+\tikzstyle{every node}=[ellipse,draw,inner sep=0.2pt,outer sep=0pt, fill=red!15]
+\tikzstyle{level 1}=[sibling distance=23mm,set style={{every node}+=[fill=blue!15]},level distance=1cm]
+\tikzstyle{level 2}=[sibling distance=10mm,font=\small,set style={{every node}+=[fill=yellow]}, level distance=0.9cm]
+\node{Total}[edge from parent fork down]
+ child {node {X}
+   child {node {AX}}
+   child {node {BX}}
+ }
+ child {node {Y}
+   child {node {AY}}
+   child {node {BY}}
+ };
+\end{tikzpicture}
+\end{block}
+\end{minipage}
+
+\pause\alert{Examples}
+
+ * Spectacle sales by brand, gender, stores, etc.
+ * Tourism by state and purpose of travel
+
+## The problem
+\fontsize{13}{14}\sf
+
+\begin{alertblock}{}
+\begin{enumerate}\tightlist
+ \item How to forecast time series at all nodes such that the forecasts add up in the same way as the original data?
+ \item Can we exploit relationships between the series to improve the forecasts?
+\end{enumerate}
+\end{alertblock}\pause
+
+### The solution
+
+1. Forecast all series at all levels of aggregation using an automatic forecasting algorithm.\newline (e.g., `ets`, `auto.arima`, FFORMA, ...)
+2. Reconcile the resulting forecasts so they add up correctly using least squares optimization (i.e., find closest reconciled forecasts to the original forecasts).
+3. This is available in the \textbf{hts} and \textbf{fable} packages in R.
+
+## Hierarchical and grouped time series
+
+Every collection of time series with aggregation constraints can be written as
+\begin{block}{}
+\centerline{$\by_{t}=\bS\bm{b}_{t}$}
+\end{block}
+where
+
+ * $\by_t$ is a vector of all series at time $t$
+ * $\bm{b}_t$ is a vector of the most disaggregated series at time $t$
+ * $\bS$ is a ``summing matrix'' containing the aggregation constraints.
+
+
+
+
+## Hierarchical time series
+
+\begin{minipage}{4cm}\vspace*{0.2cm}
+\begin{block}{}\centering
+\begin{tikzpicture}
+\tikzstyle{every node}=[ellipse,draw,fill=red!15,inner sep=2pt]
+\tikzstyle[level distance=.3cm]
+\tikzstyle[sibling distance=12cm]
+\tikzstyle{level 1}=[sibling distance=10mm,font=\small,set style={{every node}+=[fill=blue!15]}]
+\node{Total}[edge from parent fork down]
+ child {node {A}
+ }
+ child {node {B}
+ }
+ child {node {C}
+ };
+\end{tikzpicture}
+\end{block}
+\end{minipage}
+
+\only<2->{\begin{textblock}{6.3}(6,1)\small
+\begin{itemize}\itemsep=0cm\parskip=0cm
+\item[\color{white} $ y_{t}: $] observed aggregate of all series at time
+$t$.
+\item[\color{white} $ y_{X,t}: $] observation on series $X$ at time $t$.
+\item[\color{white} $ \bm{b}_{t}: $] vector of all series at bottom level
+in time $t$.
+\end{itemize}
+\end{textblock}}\vspace*{0.6cm}
+\only<3->{
+$\bY_{t}= \begin{pmatrix}
+  y_{t}\\
+  y_{A,t}\\
+  y_{B,t}\\
+  y_{C,t}
+  \end{pmatrix} = \only<3>{\hspace*{0.01cm}\begin{pmatrix}
+                1 & 1 & 1 \\
+                1 & 0 & 0 \\
+                0 & 1 & 0\\
+                0 & 0 & 1
+                \end{pmatrix}}\only<4->{{\color{orange}\underbrace{\begin{pmatrix}
+                1 & 1 & 1 \\
+                1 & 0 & 0 \\
+                0 & 1 & 0\\
+                0 & 0 & 1
+                \end{pmatrix}}_{\bS}}}\only<3>{\hspace*{0.08cm}}\only<3>{\hspace*{-0.1cm}\begin{pmatrix}Y_{A,t}\\y_{B,t}\\y_{C,t}\end{pmatrix}}\rule{0cm}{1.6cm}
+                \only<4->{\hspace*{0.08cm}{\color{DarkYellow}\underbrace{\begin{pmatrix}y_{A,t}\\y_{B,t}\\y_{C,t}\end{pmatrix}}_{\bm{b}_{t}}}}$}
+
+\vspace*{-0.6cm}
+
+\only<4>{\hspace*{8cm}\colorbox[RGB]{0,61,102}{$\bY_{t}=\color{orange}\bS\color{DarkYellow}\bm{b}_{t}$}}
+
+\vspace*{10cm}
+
+## Forecasting notation
+
+Let $\hat{\by}_n(h)$ be vector of initial $h$-step forecasts, made at time $n$, stacked in same order as $\by_t$. \pause\newline  (In general, they will not ``add up''.)\pause
+
+\begin{block}{}
+Reconciled forecasts must be of the form:
+$$\tilde{\by}_{n}(h)=\bS\bm{G}\hat{\by}_{n}(h)$$
+for some matrix $\bm{G}$.
+\end{block}\pause
+
+ * $\bm{G}$ extracts and combines base forecasts $\hat{\by}_{n}(h)$ to get bottom-level forecasts.
+ * $\bS$ adds them up
+
+## Optimal combination forecasts
+\fontsize{14}{15}\sf
+
+\begin{alertblock}{Main result}
+The best (minimum sum of variances) unbiased forecasts are obtained when
+$\bm{G} = (\bS'\bSigma^{-1}_{h}\bS)^{-1}\bS'\bSigma^{-1}_{h}$,
+where $\bSigma_h$ is the $h$-step base forecast error covariance matrix.
+\end{alertblock}
+
+\pause
+
+\begin{block}{}
+\centerline{$\displaystyle\textcolor{red}{\tilde{\by}_{n}(h)}
+=\bS(\bS'\bSigma^{-1}_{h}\bS)^{-1}\bS'\bSigma^{-1}_{h}\textcolor{blue}{\hat{\by}_{n}(h)}$}
+\end{block}\fontsize{14}{15}\sf
+
+\alert{\textbf{Problem:}} $\bSigma_h$ hard to estimate, especially for $h>1$.
+
+\alert{Solutions:}\vspace*{-0.4cm}
+
+ * Ignore $\bSigma_h$ (OLS)
+ * Assume $\bSigma_h$ diagonal (WLS) [Default in `hts`]
+ * Try to estimate $\bSigma_h$ (GLS)
+
+## Features
+\fontsize{15}{17}\sf
+
+ * Covariates can be included in initial forecasts.
+ * Adjustments can be made to initial forecasts at any level.
+ * Very simple and flexible method. Can work with *any* hierarchical or grouped time series.
+ * Conceptually easy to implement: regression of base forecasts on structure matrix.
+
+## Australian tourism
+
+\full{regions1_with_labels}
+\only<3-4>{\begin{textblock}{6.8}(2,2)
+\begin{block}{Hierarchy:}
+  \begin{itemize}
+      \item  States (7)
+      \item  Zones (27)
+      \item  Regions (82)
+  \end{itemize}
+\end{block}
+\end{textblock}}
+\only<4>{\begin{textblock}{6.8}(2,6)
+\begin{block}{Base forecasts}
+ETS (exponential smoothing) models
+\end{block}\end{textblock}}
+
+\only<2>{\begin{textblock}{10.}(1.4,2)
+\begin{block}{Domestic visitor nights}
+Quarterly data: 1998 -- 2006.\\
+From: \textit{National Visitor Survey}, based on annual interviews of 120,000 Australians aged 15+, collected by Tourism Research Australia.
+\end{block}
+\end{textblock}}
+
+## Base forecasts
+
+\only<1>{\full{austourism1}}
+\only<2>{\full{austourism2}}
+\only<3>{\full{austourism3}}
+\only<4>{\full{austourism4}}
+\only<5>{\full{austourism5}}
+\only<6>{\full{austourism6}}
+\only<7>{\full{austourism7}}
+\only<8>{\full{austourism8}}
+\only<9>{\full{austourism9}}
+
+## Reconciled forecasts
+\only<1>{\full{Australia}}
+\only<2>{\full{States}}
+\only<3>{\full{Capitals}}
+
+## Forecast evaluation
+
+  * Select models using all observations;
+  * Re-estimate models using first 12 observations and generate 1- to 8-step-ahead forecasts;
+  * Increase sample size one observation at a time, re-estimate models, generate forecasts until the end of the sample;
+  * In total 24 1-step-ahead, 23 2-steps-ahead, up to 17 8-steps-ahead for forecast evaluation.
+
+## Forecast evaluation
+
+```{r rorigin, include=FALSE}
+for(i in 2:6)
+{
+  fname <- paste("rollingorigin",i,sep="")
+  savepdf(fname,height=9.5,width=15)
+  plot(0,0,xlim=c(0,28),ylim=c(0,1),
+       xaxt="n",yaxt="n",bty="n",xlab="",ylab="",type="n")
+  for(j in 1:20)
+  {
+    test <- (6+j):26
+    train <- 1:(5+j)
+    arrows(0,1-j/20,27,1-j/20,0.05)
+    points(train,rep(1-j/20,length(train)),pch=19,col="blue")
+    if(length(test) >= i)
+      points(test[i], 1-j/20, pch=19, col="red")
+    if(length(test) >= i)
+      points(test[-i], rep(1-j/20,length(test)-1), pch=19, col="gray")
+    else
+      points(test, rep(1-j/20,length(test)), pch=19, col="gray")
+  }
+  text(28,.95,"time")
+  endpdf()
+}
+for(k in 1:20) {
+  fname <- paste("rorigin",k,sep="")
+  savepdf(fname,height=9.5,width=15)
+  plot(0,0,xlim=c(0,28),ylim=c(0,1),
+     xaxt="n",yaxt="n",bty="n",xlab="",ylab="",type="n")
+  for(j in 1:k) {
+    test <- (6+j):26
+    train <- 1:(5+j)
+    arrows(0,1-j/20,27,1-j/20,0.05)
+    points(train,rep(1-j/20,length(train)),pch=19,col="blue")
+    if(length(test) >= 1) {
+      points(test[1], 1-j/20, pch=19, col="red")
+      points(test[-1], rep(1-j/20,length(test)-1), pch=19, col="gray")
+    }
+    else {
+      points(test, rep(1-j/20,length(test)), pch=19, col="gray")
+    }
+  }
+  text(28,.95,"time")
+  endpdf()
+}
+```
+
+\begin{textblock}{14}(0.2,1.4)
+\colorbox{white}{\hspace*{0.2cm}\textbf{\textcolor{blue}{Training sets}} \hspace*{3cm}
+\textbf{\textcolor{red}{Test sets
+\only<1-20>{$h=1$}%
+\only<21>{$h=2$}%
+\only<22>{$h=3$}%
+\only<23>{$h=4$}%
+\only<24>{$h=5$}%
+\only<25>{$h=6$}%
+}}\hspace*{3.22cm}}
+\end{textblock}
+
+\only<1>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin1}}
+\only<2>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin2}}
+\only<3>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin3}}
+\only<4>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin4}}
+\only<5>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin5}}
+\only<6>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin6}}
+\only<7>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin7}}
+\only<8>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin8}}
+\only<9>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin9}}
+\only<10>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin10}}
+\only<11>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin11}}
+\only<12>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin12}}
+\only<13>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin13}}
+\only<14>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin14}}
+\only<15>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin15}}
+\only<16>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin16}}
+\only<17>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin17}}
+\only<18>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin18}}
+\only<19>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin19}}
+\only<20>{\placefig{0.2}{2.0}{width=12.8cm}{rorigin20}}
+\only<21>{\placefig{0.2}{2.0}{width=12.8cm}{rollingorigin2}}
+\only<22>{\placefig{0.2}{2.0}{width=12.8cm}{rollingorigin3}}
+\only<23>{\placefig{0.2}{2.0}{width=12.8cm}{rollingorigin4}}
+\only<24>{\placefig{0.2}{2.0}{width=12.8cm}{rollingorigin5}}
+\only<25>{\placefig{0.2}{2.0}{width=12.8cm}{rollingorigin6}}
+
+## Hierarchy: states, zones, regions
+\fontsize{10}{10.5}\sf\tabcolsep=0.12cm\vspace*{-0.6cm}
+\hspace*{-0.2cm}\begin{tabular}{lrrrrrrr}
+            & \multicolumn{6}{c}{\bf Forecast horizon} & \\
+\textbf{RMSE} & $h=1$  & $h=2$ & $h=3$ & $h=4$ & $h=5$ & $h=6$ & \textbf{Ave}\\
+\midrule
+\multicolumn{8}{c}{\bf\alert{Australia}}\\
+Base   & 1762.04    & 1770.29    & 1766.02     & 1818.82    & 1705.35    & 1721.17    & \bf 1757.28 \\
+Bottom & 1736.92    & 1742.69    & 1722.79     & 1752.74    & 1666.73    & 1687.43    & \bf 1718.22 \\
+WLS    & 1705.21    & 1715.87    & \hl 1703.75 & 1729.56    & 1627.79    & \hl1661.24 & \bf 1690.57 \\
+GLS    & \hl1704.64 & \hl1715.60 & 1705.31     & \hl1729.04 & \hl1626.36 & 1661.64    & \bf \hl 1690.43 \\
+\midrule
+\multicolumn{8}{c}{\bf\alert{States}}\\
+Base   & 399.77     & 404.16     & 401.92      & 407.26     & 395.38     & 401.17     & \bf 401.61 \\
+Bottom & 404.29     & 406.95     & 404.96      & 409.02     & 399.80     & 401.55     & \bf 404.43 \\
+WLS    & \hl 398.84 & \hl 402.12 & \hl 400.71  & \hl 405.03 & 394.76     & 398.23     & \bf \hl 399.95 \\
+GLS    & \hl 398.84 & 402.16     & 400.86      & \hl 405.03 & \hl 394.59 & \hl 398.22 & \bf \hl 399.95 \\
+\midrule
+\multicolumn{8}{c}{\bf\alert{Regions}}\\
+Base   & 93.15      & 93.38      & 93.45       & 93.79      & 93.50      & 93.56      & \bf 93.47 \\
+Bottom & 93.15      & 93.38      & 93.45       & 93.79      & 93.50      & 93.56      & \bf 93.47 \\
+WLS    & 93.02      & 93.32      & 93.38       & 93.72      & 93.39      & 93.53      & \bf 93.39 \\
+GLS    & \hl 92.98  & \hl 93.27  & \hl 93.34   & \hl 93.66  & \hl 93.34  & \hl 93.46  & \bf \hl 93.34
+\end{tabular}
+
+## Current packages
+
+\begin{textblock}{5.2}(7,0)\begin{alertblock}{}\Large\textbf{OTexts.com/fpp2}\end{alertblock}\end{textblock}
+
+\placefig{1}{1.4}{width=4cm}{forecaststicker.png}
+\placefig{5}{1.4}{width=4cm}{htssticker.png}
+\placefig{3}{4.85}{width=4cm}{tsfeatures.png}
+
+## Tidyverts R packages
+
+\begin{textblock}{3.8}(8,0)\begin{alertblock}{}\Large\textbf{tidyverts.org}\end{alertblock}\end{textblock}
+
+\placefig{1}{1.4}{width=4cm}{tsibble.png}
+\placefig{5}{1.4}{width=4cm}{tsibbledata.png}
+\placefig{3}{4.85}{width=4cm}{feasts.png}
+\placefig{7}{4.85}{width=4cm}{fable.png}
+
+
+## Acknowledgments
+
+\begin{textblock}{12.5}(0.2,1.2)
+\begin{block}{}\fontsize{9}{10}\sf
+\centering\begin{tabular}{p{3.4cm}p{3.4cm}p{3.5cm}}
+\includegraphics[height=2cm, width=10cm, keepaspectratio]{dilini} &
+\includegraphics[height=2cm, width=10cm, keepaspectratio]{kate} &
+\includegraphics[height=2cm, width=10cm, keepaspectratio]{george}\\
+Dilini Talagala  & Kate Smith-Miles & George Athanasopoulos \\
+\includegraphics[height=2cm, width=10cm, keepaspectratio]{earowang} &
+\includegraphics[height=2cm, width=10cm, keepaspectratio]{thiyanga} &
+\includegraphics[height=2cm, width=10cm, keepaspectratio]{pablo}\\
+Earo Wang & Thiyanga Talagala & Pablo Montero-Manso\\
+\includegraphics[height=2cm, width=10cm, keepaspectratio]{mitch} &
+\includegraphics[height=2cm, width=10cm, keepaspectratio]{yanfei}&
+\includegraphics[height=2cm, width=10cm, keepaspectratio]{shanika}\\
+Mitchell \rlap{O'Hara-Wild} & Yanfei Kang & Shanika Wickramasuriya
+ \end{tabular}
+\end{block}
+\end{textblock}
+
+
