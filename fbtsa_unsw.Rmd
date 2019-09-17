@@ -10,7 +10,7 @@ output:
     highlight: tango
     incremental: no
     keep_tex: yes
-    colortheme: monashblue
+    colortheme: monashwhite
     toc: yes
     includes:
       in_header: preamble.tex
@@ -18,26 +18,28 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
-  echo = FALSE, message = FALSE, warning = FALSE, cache = TRUE,
-  dev.args = list(bg = grey(0.9), pointsize = 11)
+  echo = FALSE, 
+  message = FALSE, 
+  warning = FALSE, 
+  cache = TRUE
 )
 library(tidyverse)
 library(lubridate)
 library(tsibble)
 library(feasts)
-savepdf <- function(file, width=16, height=10) {
-  fname <<- paste("figs/",file,".pdf",sep="")
-  pdf(fname, width=width/2.54, height=height/2.54, pointsize=10, bg='white')
-  par(mgp=c(2.2,0.45,0), tcl=-0.4, mar=c(3.3,3.6,1.1,1.1))
+savepdf <- function(file, width = 16, height = 10) {
+  fname <<- paste("figs/", file, ".pdf", sep = "")
+  pdf(fname, width = width / 2.54, height = height / 2.54, pointsize = 10, bg = "white")
+  par(mgp = c(2.2, 0.45, 0), tcl = -0.4, mar = c(3.3, 3.6, 1.1, 1.1))
 }
 endpdf <- function() {
   crop::dev.off.crop(fname)
 }
 gghist <- function(data, mapping, ...) {
   x <- GGally::eval_data_col(data, mapping$x)
-  bw <- 0.2*bw.nrd0(x) + 0.8*bw.SJ(x)
+  bw <- 0.2 * bw.nrd0(x) + 0.8 * bw.SJ(x)
   p <- ggplot(data, mapping) +
-    geom_density(col=NA, fill="#cc5900", bw=bw)
+    geom_density(col = NA, fill = "#cc5900", bw = bw)
   return(p)
 }
 set.seed(20190927)
@@ -57,37 +59,37 @@ options(digits = 3, width = 63)
 ```{r m3data, message=FALSE}
 m3totsibble <- function(z) {
   rbind(
-    as_tsibble(z$x) %>% mutate(Type="Training"),
-    as_tsibble(z$xx) %>% mutate(Type="Test")
+    as_tsibble(z$x) %>% mutate(Type = "Training"),
+    as_tsibble(z$xx) %>% mutate(Type = "Test")
   ) %>%
-  mutate(
-    st = z$st,
-    type = z$type,
-    period = z$period,
-    description = z$description,
-    sn = z$sn,
-  ) %>%
-  as_tibble()
+    mutate(
+      st = z$st,
+      type = z$type,
+      period = z$period,
+      description = z$description,
+      sn = z$sn,
+    ) %>%
+    as_tibble()
 }
 m3yearly <- Mcomp::M3 %>%
   subset("yearly") %>%
   purrr::map_dfr(m3totsibble) %>%
-  as_tsibble(index=index, key=c(sn,period,st)) %>%
+  as_tsibble(index = index, key = c(sn, period, st)) %>%
   mutate(z = scale(value))
 m3quarterly <- Mcomp::M3 %>%
   subset("quarterly") %>%
   purrr::map_dfr(m3totsibble) %>%
   mutate(index = yearquarter(index)) %>%
-  as_tsibble(index=index, key=c(sn,period,st))
+  as_tsibble(index = index, key = c(sn, period, st))
 m3monthly <- Mcomp::M3 %>%
   subset("monthly") %>%
   purrr::map_dfr(m3totsibble) %>%
   mutate(index = yearmonth(index)) %>%
-  as_tsibble(index=index, key=c(sn,period,st))
+  as_tsibble(index = index, key = c(sn, period, st))
 m3other <- Mcomp::M3 %>%
   subset("other") %>%
   purrr::map_dfr(m3totsibble) %>%
-  as_tsibble(index=index, key=c(sn,period,st))
+  as_tsibble(index = index, key = c(sn, period, st))
 ```
 
 ```{r scalem3}
@@ -103,9 +105,11 @@ for (i in files) {
   fname <- paste("M3data", i, sep = "")
   savepdf(fname)
   plot(0, 0, ylim = range(scalem3), xlim = c(0, 1), xlab = "Time", ylab = "", type = "n")
-  for (i in 1:i)
-    lines((1:length(scalem3[[k[i]]])) / length(scalem3[[k[i]]]), scalem3[[k[i]]], 
-          col = cols[i])
+  for (i in 1:i) {
+    lines((1:length(scalem3[[k[i]]])) / length(scalem3[[k[i]]]), scalem3[[k[i]]],
+      col = cols[i]
+    )
+  }
   endpdf()
 }
 ```
@@ -155,11 +159,13 @@ Called ``features'' in the machine learning literature.
 
 ```{r stl, fig.height=4.7}
 m3monthly %>%
-  filter(sn=="N2096") %>%
+  filter(sn == "N2096") %>%
   STL(value) %>%
-  autoplot() + ylab("") + xlab("")  +
-  scale_x_date(breaks=seq(as_date("1982-01-01"), as_date("1993-01-01"), by = "year"),
-               labels=1982:1993, minor_breaks=NULL)
+  autoplot() + ylab("") + xlab("") +
+  scale_x_date(
+    breaks = seq(as_date("1982-01-01"), as_date("1993-01-01"), by = "year"),
+    labels = 1982:1993, minor_breaks = NULL
+  )
 ```
 
 ## Candidate features
@@ -181,47 +187,59 @@ Low values of $H$ suggest a time series that is easier to forecast (more signal)
 
 ```{r m3_features}
 khs_stl <- function(x, period) {
-  output <- c(n=length(x), frequency=period, feat_spectral(x))
-  lambda <- forecast::BoxCox.lambda(ts(x, frequency=period),
-                      lower=0, upper=1, method='loglik')
-  stlfeatures <- feat_stl(box_cox(x, lambda), .period=period,
-      s.window='periodic', robust=TRUE)
-  output <- c(output, stlfeatures, lambda=lambda)
-  if(period==1L)
-    output <- c(output, seasonal_strength=0)
+  output <- c(n = length(x), frequency = period, feat_spectral(x))
+  lambda <- forecast::BoxCox.lambda(ts(x, frequency = period),
+    lower = 0, upper = 1, method = "loglik"
+  )
+  stlfeatures <- feat_stl(box_cox(x, lambda),
+    .period = period,
+    s.window = "periodic", robust = TRUE
+  )
+  output <- c(output, stlfeatures, lambda = lambda)
+  if (period == 1L) {
+    output <- c(output, seasonal_strength = 0)
+  }
   return(output)
 }
 m3_features <- bind_rows(
-    m3yearly %>% features(value, features=list(~ khs_stl(.,1))),
-    m3quarterly %>% features(value, features=list(~ khs_stl(.,4))) %>%
-      rename(seasonal_strength = seasonal_strength_4),
-    m3monthly %>% features(value, features=list(~ khs_stl(.,12))) %>%
-      rename(seasonal_strength = seasonal_strength_12),
-    m3other %>% features(value, features=list(~ khs_stl(.,1)))
-  ) %>%
-  select(sn, n, spectral_entropy, trend_strength, seasonal_strength,
-         frequency, stl_e_acf1, lambda)
+  m3yearly %>% features(value, features = list(~ khs_stl(., 1))),
+  m3quarterly %>% features(value, features = list(~ khs_stl(., 4))) %>%
+    rename(seasonal_strength = seasonal_strength_4),
+  m3monthly %>% features(value, features = list(~ khs_stl(., 12))) %>%
+    rename(seasonal_strength = seasonal_strength_12),
+  m3other %>% features(value, features = list(~ khs_stl(., 1)))
+) %>%
+  select(
+    sn, n, spectral_entropy, trend_strength, seasonal_strength,
+    frequency, stl_e_acf1, lambda
+  )
 ```
 
 ```{r M3examples, include=FALSE, dependson="M3Features"}
 m3plot <- function(sn) {
   m3totsibble(Mcomp::M3[[sn[1]]]) %>%
-  as_tsibble(index=index, key=c(sn,period,st)) %>%
-  autoplot(value) + ylab(sn) + xlab("")
+    as_tsibble(index = index, key = c(sn, period, st)) %>%
+    autoplot(value) + ylab(sn) + xlab("")
 }
 # Consider only long series for plotting
-m3_long <- m3_features %>% filter(n > 50) 
-fnames <- m3_long %>% select(-n,-sn) %>% colnames()
+m3_long <- m3_features %>% filter(n > 50)
+fnames <- m3_long %>%
+  select(-n, -sn) %>%
+  colnames()
 for (i in seq_along(fnames)) {
   savepdf(paste(fnames[i], "Lo", sep = ""), width = 20, height = 7)
-    m3_long %>% 
-      filter(m3_long[,fnames[i]] == min(m3_long[,fnames[i]])) %>%
-      pull(sn) %>% m3plot() %>% print()
+  m3_long %>%
+    filter(m3_long[, fnames[i]] == min(m3_long[, fnames[i]])) %>%
+    pull(sn) %>%
+    m3plot() %>%
+    print()
   endpdf()
   savepdf(paste(fnames[i], "Hi", sep = ""), width = 20, height = 7)
-    m3_long %>% 
-      filter(m3_long[,fnames[i]] == max(m3_long[,fnames[i]])) %>%
-      pull(sn) %>% m3plot() %>% print()
+  m3_long %>%
+    filter(m3_long[, fnames[i]] == max(m3_long[, fnames[i]])) %>%
+    pull(sn) %>%
+    m3plot() %>%
+    print()
   endpdf()
 }
 ```
@@ -230,15 +248,17 @@ for (i in seq_along(fnames)) {
 
 ```{r M3period, dependson="M3Features"}
 m3_features %>%
-  GGally::ggally_barDiag(mapping = aes(frequency), 
-    binwidth = 0.2, colour = "#cc5900", fill = "#cc5900") +
-  scale_x_continuous(breaks=seq(12), minor_breaks=NULL)
+  GGally::ggally_barDiag(
+    mapping = aes(frequency),
+    binwidth = 0.2, colour = "#cc5900", fill = "#cc5900"
+  ) +
+  scale_x_continuous(breaks = seq(12), minor_breaks = NULL)
 ```
 
 ## Distribution of Seasonality for M3
 
 ```{r M3season, dependson="M3Features"}
-m3_features %>% gghist(aes(x=seasonal_strength))
+m3_features %>% gghist(aes(x = seasonal_strength))
 ```
 
 \only<2->{
@@ -259,7 +279,7 @@ m3_features %>% gghist(aes(x=seasonal_strength))
 ## Distribution of Trend for M3
 
 ```{r M3trend, dependson="M3Features"}
-m3_features %>% gghist(aes(x=trend_strength))
+m3_features %>% gghist(aes(x = trend_strength))
 ```
 
 \only<2->{
@@ -280,7 +300,7 @@ m3_features %>% gghist(aes(x=trend_strength))
 ## Distribution of Residual ACF1 for M3
 
 ```{r M3ACF1, dependson="M3Features"}
-m3_features %>% gghist(aes(x=stl_e_acf1))
+m3_features %>% gghist(aes(x = stl_e_acf1))
 ```
 
 \only<2->{
@@ -301,7 +321,7 @@ m3_features %>% gghist(aes(x=stl_e_acf1))
 ## Distribution of Spectral Entropy for M3
 
 ```{r M3entropy, dependson="M3Features"}
-m3_features %>% gghist(aes(x=spectral_entropy))
+m3_features %>% gghist(aes(x = spectral_entropy))
 ```
 
 \only<2->{
@@ -322,16 +342,16 @@ m3_features %>% gghist(aes(x=spectral_entropy))
 ## Feature distributions
 
 ```{r ACF1SE, dependson="M3Features"}
-m3_features %>% 
-  ggplot(aes(x = spectral_entropy, y = stl_e_acf1)) + 
+m3_features %>%
+  ggplot(aes(x = spectral_entropy, y = stl_e_acf1)) +
   geom_point()
 ```
 
 ## Feature distributions
 
 ```{r TrendSE, dependson="M3Features"}
-m3_features %>% 
-  ggplot(aes(x = spectral_entropy, y = trend_strength)) + 
+m3_features %>%
+  ggplot(aes(x = spectral_entropy, y = trend_strength)) +
   geom_point()
 ```
 
@@ -345,9 +365,9 @@ yk_ggally_barDiag <- wrap(ggally_barDiag,
   colour = "#cc5900",
   fill = "#cc5900", width = 0.2
 )
-m3_features %>% 
+m3_features %>%
   mutate(period = as.character(frequency)) %>%
-  select(period, spectral_entropy, trend_strength, seasonal_strength, stl_e_acf1, lambda) %>% 
+  select(period, spectral_entropy, trend_strength, seasonal_strength, stl_e_acf1, lambda) %>%
   GGally::ggpairs(
     diag = list(
       continuous = yk_ggally_densityDiag,
@@ -370,22 +390,26 @@ ncol <- 5
 n <- length(j)
 savepdf("M3sample")
 plot(0, 0, ylim = c(0, n / ncol), xlim = c(0, ncol * 1.2), yaxt = "n", xaxt = "n", ylab = "", xlab = "", bty = "n", type = "n")
-for (i in 1:n)
+for (i in 1:n) {
   lines(
     (1:length(scalem3[[j[i]]])) / length(scalem3[[j[i]]]) + ((i - 1) %% ncol) * 1.1,
     scalem3[[j[i]]] + trunc((i - 1) / ncol)
   )
+}
 endpdf()
 ```
 
 ```{r m3pca, dependson="M3Features"}
 # 2-d Feature space (Top of Fig 2)
-m3_features %>%
+khs_pca <- m3_features %>%
   select(-sn, -n) %>%
-  prcomp(scale=TRUE) %>%
+  prcomp(scale = TRUE)
+khs_pca$x[, 2] <- -khs_pca$x[, 2]
+khs_pca$rotation[, 2] <- -khs_pca$rotation[, 2]
+khs_pca %>%
   augment(m3_features) %>%
-  ggplot(aes(x=.fittedPC1, y=.fittedPC2)) +
-    geom_point() -> p
+  ggplot(aes(x = .fittedPC1, y = .fittedPC2)) +
+  geom_point() -> p
 savepdf("FeatureSpace", height = 13, width = 13)
 print(p)
 endpdf()
@@ -415,9 +439,9 @@ Principal component decomposition
 
 \vspace*{-0.2cm}
 
-\includegraphics[width=8.2cm]{FeatureSpace}
+\hspace*{-0.5cm}\includegraphics[width=8.4cm]{FeatureSpace}
 
-\begin{textblock}{4}(8,3)
+\begin{textblock}{4}(8.3,3)
 \begin{block}{}\fontsize{12}{13}\sf
 First two PCs explain 58.5\% of the variance.
 \end{block}
@@ -425,20 +449,117 @@ First two PCs explain 58.5\% of the variance.
 
 ## M3 feature space
 
-```{r m3biplot, dependson="M3Features",fig.width=5.3,fig.height=4.5}
-m3_features %>%
-  select(-sn, -n) %>%
-  prcomp(scale=TRUE) %>%
-  factoextra::fviz_pca_biplot(geom='point', col.ind='gray') + 
-  coord_equal(ratio = 1)
+```{r m3pca1, dependson="m3pca", fig.height=5}
+p + geom_point(aes(color = factor(frequency))) +
+  coord_equal(ratio = 1) + scale_color_viridis_d() +
+  guides(colour = guide_legend("Frequency  "))
 ```
 
 ## M3 feature space
 
-```{r m3pca1, dependson="m3pca", fig.width=6, fig.height=4.5}
-p + geom_point(aes(color = factor(frequency))) +
+```{r m3pca2, dependson="m3pca", fig.height=5}
+p + geom_point(aes(color = seasonal_strength)) +
+  coord_equal(ratio = 1) +
+  scale_color_viridis_c() +
+  guides(colour = guide_legend("Seasonality"))
+```
+
+## M3 feature space
+
+```{r m3pca3, dependson="m3pca", fig.height=5}
+p + geom_point(aes(color = trend_strength)) +
+  coord_equal(ratio = 1) +
+  scale_color_viridis_c() +
+  guides(colour = guide_legend("Trend        "))
+```
+
+## M3 feature space
+
+```{r m3pca4, dependson="m3pca", fig.height=5}
+p + geom_point(aes(color = spectral_entropy)) +
+  coord_equal(ratio = 1) +
+  scale_color_viridis_c() +
+  guides(colour = guide_legend("Entropy    "))
+```
+
+## M3 feature space
+
+```{r m3pca5, dependson="m3pca", fig.height=5}
+p + geom_point(aes(color = stl_e_acf1)) +
+  coord_equal(ratio = 1) +
+  scale_color_viridis_c() +
+  guides(colour = guide_legend("R ACF1     "))
+```
+
+## M3 feature space
+
+```{r m3pca6, dependson="m3pca", fig.height=5}
+p + geom_point(aes(color = lambda)) +
+  coord_equal(ratio = 1) +
+  scale_color_viridis_c() +
+  guides(colour = guide_legend("Lambda    "))
+```
+
+## M3 feature space
+
+```{r m3biplot, dependson="M3Features",fig.width=5.3,fig.height=5}
+khs_pca %>%
+  factoextra::fviz_pca_biplot(geom = "point", col.ind = "gray") +
   coord_equal(ratio = 1)
 ```
+
+## What about the holes?
+
+\placefig{0.4}{1.5}{height=8cm,width=12cm, trim=0 0 0 20, clip=true}{InstanceSpace}
+\only<2->{\begin{textblock}{3}(1.3,1.8)\alert{What time series live here?}\end{textblock}}
+\only<3->{\begin{textblock}{4}(8.5,7.8)\alert{Or here?}\end{textblock}}
+\only<4>{\begin{textblock}{4}(8.9,1.8)\alert{Or here?}\end{textblock}}
+
+## Generating new time series
+\fontsize{13}{14.5}\sf
+
+\begin{block}{}
+We can use the feature space to:
+\begin{itemize}
+\item[\ding{229}] Generate new time series with similar features to existing series
+\item[\ding{229}] Generate new time series where there are ``holes'' in the feature space.
+\end{itemize}
+\end{block}
+\pause\vspace*{-0.4cm}
+
+\begin{itemize}
+\item Let $\{\text{PC}_1,\text{PC}_2,\dots,\text{PC}_{n}\}$ be a ``population'' of time series of specified length and period.
+\item Genetic algorithm uses a process of selection, crossover and mutation to evolve the population towards a target point $T_i$.
+\item Optimize: $\text{Fitness }(\text{PC}_j) = - \sqrt{(|\text{PC}_j-T_i|^2)}$.
+\item Initial population random with some series in neighbourhood of $T_i$.
+\end{itemize}
+
+## Evolving new time series
+
+\only<1>{\full{TargetedInstancesEgsLocations} }
+\only<2>{\full{EvolvedInstancesEgs} }
+
+## Evolving new time series
+\only<1>{\full{UnknownEvolvedEgsLocations}}
+\only<2>{\full{UnknownEvolvedEgs}}
+
+## Evolving new time series
+
+\only<1>{\placefig{2.1}{1.4}{height=7.6cm, trim=30 600 550 0, clip=TRUE}{EvolvedTSnbDiffLsep}}
+\only<2>{\placefig{2.1}{1.4}{height=7.6cm, trim=606 600 0 0, clip=TRUE}{EvolvedTSnbDiffLsep}}
+\only<3>{\placefig{2.1}{1.4}{height=7.52cm, trim=30 30 570 577, clip=TRUE}{EvolvedTSnbDiffLsep}}
+\only<4>{\placefig{2.1}{1.4}{height=7.52cm, trim=606 30 0 577, clip=TRUE}{EvolvedTSnbDiffLsep}}
+\begin{textblock}{3}(6,9)PC1\end{textblock}
+\begin{textblock}{3}(1.3,4.55)PC2\end{textblock}
+
+## Papers and packages
+
+\hspace*{-0.4cm}\begin{tabular}{lp{8.5cm}}
+\raisebox{-2.3cm}{\includegraphics[width=2cm]{IJFcover.jpg}} & \RaggedRight Kang, Hyndman, \& Smith-Miles, K. (2017) Visualising forecasting algorithm performance using time series instance spaces. \emph{IJF}, \textbf{33}(2) 345--358. \\[0.6cm]
+\raisebox{-1.5cm}{\includegraphics[width=2cm]{Rlogo}} & \RaggedRight Hyndman, Wang, Kang, Talagala \& Montero-Manso (2018). \textbf{tsfeatures}: Time Series Feature Extraction. \par
+  \rlap{\url{github.com/robjhyndman/tsfeatures/}}
+\end{tabular}
+
 
 ## Feature properties
 
@@ -474,27 +595,32 @@ For other analyses, it may be appropriate to have different requirements.
 yahoo <- tsfeatures::yahoo_data() %>%
   as_tsibble() %>%
   mutate(
-    Time = hms::hms(day = trunc(index) - 1L,
-                    hour = as.integer((round(24*(index-1))) %% 24))
+    Time = hms::hms(
+      day = trunc(index) - 1L,
+      hour = as.integer((round(24 * (index - 1))) %% 24)
+    )
   ) %>%
-  as_tsibble(index = Time, key=key) %>%
+  as_tsibble(index = Time, key = key) %>%
   select(Time, key, value)
 
 random_yahoo <- function() {
   yahoo %>%
     filter(
-      Time < hms::hms(day = 30, hour=0),
+      Time < hms::hms(day = 30, hour = 0),
       key %in% sample(unique(key), 1)
     ) %>%
-    autoplot(value) + 
-      scale_x_time(breaks = 24*60*60*seq(0,50,by=2), 
-                   labels = seq(0,50,by=2), minor_breaks=NULL) +
-      xlab("Day")
+    autoplot(value) +
+    scale_x_time(
+      breaks = 24 * 60 * 60 * seq(0, 50, by = 2),
+      labels = seq(0, 50, by = 2), minor_breaks = NULL
+    ) +
+    xlab("Day")
 }
 p <- list()
-for(i in seq(4))
+for (i in seq(4)) {
   p[[i]] <- random_yahoo()
-gridExtra::marrangeGrob(p, ncol=1, nrow=4)
+}
+gridExtra::marrangeGrob(p, ncol = 1, nrow = 4)
 ```
 
 ## Yahoo server metrics
@@ -521,42 +647,44 @@ gridExtra::marrangeGrob(p, ncol=1, nrow=4)
 
 ```{r yahoo, fig.height=4, fig.width=4}
 yahoo_features <- bind_cols(
-    yahoo %>% features(value, features=list(
-      mean = ~ mean(., na.rm = TRUE),
-      var = ~ var(., na.rm = TRUE)
-    )),
-    yahoo %>% features(scale(value), features = list(
-      ~ feat_acf(.),
-      ~ feat_spectral(.),
-      ~ n_flat_spots(.),
-      ~ n_crossing_points(.),
-      ~ var_tiled_var(., .period = 24, .size = 24),
-      ~ shift_level_max(., .period = 24, .size = 24),
-      ~ shift_var_max(., .period = 24, .size = 24),
-      ~ shift_kl_max(., .period = 24, .size = 48),
-      ~ feat_stl(., .period = 24, s.window = "periodic", robust = TRUE)
-    ))
-  ) %>%
+  yahoo %>% features(value, features = list(
+    mean = ~ mean(., na.rm = TRUE),
+    var = ~ var(., na.rm = TRUE)
+  )),
+  yahoo %>% features(scale(value), features = list(
+    ~ feat_acf(.),
+    ~ feat_spectral(.),
+    ~ n_flat_spots(.),
+    ~ n_crossing_points(.),
+    ~ var_tiled_var(., .period = 24, .size = 24),
+    ~ shift_level_max(., .period = 24, .size = 24),
+    ~ shift_var_max(., .period = 24, .size = 24),
+    ~ shift_kl_max(., .period = 24, .size = 48),
+    ~ feat_stl(., .period = 24, s.window = "periodic", robust = TRUE)
+  ))
+) %>%
   rename(lumpiness = var_tiled_var) %>%
-  select(key, mean, var, acf1, trend_strength,
-         seasonal_strength_24, linearity, curvature,
-         seasonal_peak_24, seasonal_trough_24,
-         spectral_entropy, lumpiness, spikiness,
-         shift_level_max, shift_var_max,
-         n_flat_spots, n_crossing_points,
-         shift_kl_max, shift_kl_index)
+  select(
+    key, mean, var, acf1, trend_strength,
+    seasonal_strength_24, linearity, curvature,
+    seasonal_peak_24, seasonal_trough_24,
+    spectral_entropy, lumpiness, spikiness,
+    shift_level_max, shift_var_max,
+    n_flat_spots, n_crossing_points,
+    shift_kl_max, shift_kl_index
+  )
 ```
 
 ```{r yahoo2, dependson="yahoo"}
 hwl_pca <- yahoo_features %>%
   select(-key) %>%
   na.omit() %>%
-  prcomp(scale=TRUE) %>%
+  prcomp(scale = TRUE) %>%
   augment(na.omit(yahoo_features))
 hwl_pca %>%
   as_tibble() %>%
-  ggplot(aes(x=.fittedPC1, y=.fittedPC2)) +
-    geom_point()
+  ggplot(aes(x = .fittedPC1, y = .fittedPC2)) +
+  geom_point()
 ```
 
 
@@ -567,8 +695,8 @@ hwl_pca %>%
 yahoo_features %>%
   select(-key) %>%
   na.omit() %>%
-  prcomp(scale=TRUE) %>%
-  factoextra::fviz_pca_biplot(geom='point', col.ind='gray') + 
+  prcomp(scale = TRUE) %>%
+  factoextra::fviz_pca_biplot(geom = "point", col.ind = "gray") +
   coord_equal(ratio = 1)
 ```
 
@@ -586,7 +714,7 @@ yahoo_features %>%
 \fontsize{10}{10}\sf
 
 ```{r hdryahoo, dependson="yahoo", fig.height=4, fig.width=6.66}
-hdrcde::hdrscatterplot(hwl_pca$.fittedPC1, hwl_pca$.fittedPC2, noutliers=5)
+hdrcde::hdrscatterplot(hwl_pca$.fittedPC1, hwl_pca$.fittedPC2, noutliers = 5)
 ```
 
 \begin{textblock}{4.8}(7.7,6.9)\fontsize{10}{10}\sf
@@ -701,11 +829,11 @@ ggplot(data = df, aes(x = method, y = Rank, fill = factor(class))) +
   coord_flip() +
   scale_x_discrete(
     limits = c("WN", "RW", "auto.arima", "ets", "Theta", "RWD", "RF-class priors", "RF-unbalanced"),
-	    labels = c("WN", "RW", "auto.arima", "ets", "Theta", "RWD", "RF-class priors", "RF-unbalanced")
+    labels = c("WN", "RW", "auto.arima", "ets", "Theta", "RWD", "RF-class priors", "RF-unbalanced")
   ) + scale_fill_brewer(
     breaks = c(1, 0),
-    labels = c("Experiment 1 (new: M3)", "Experiment 2 (new: M1)")
-    , palette = "Set1"
+    labels = c("Experiment 1 (new: M3)", "Experiment 2 (new: M1)"),
+    palette = "Set1"
   ) +
   theme(
     axis.title.y = element_blank(), legend.title = element_blank(),
@@ -735,8 +863,8 @@ ggplot(data = df, aes(x = method, y = Rank, fill = factor(class))) +
     labels = c("WN", "RW", "RWD", "STL-AR", "Snaive", "auto.arima", "ets", "Theta", "RF-class priors", "RF-unbalanced")
   ) + scale_fill_brewer(
     breaks = c(1, 0),
-    labels = c("Experiment 1 (new: M3)", "Experiment 2 (new: M1)")
-    , palette = "Set1"
+    labels = c("Experiment 1 (new: M3)", "Experiment 2 (new: M1)"),
+    palette = "Set1"
   ) +
   theme(
     axis.title.y = element_blank(), legend.title = element_blank(),
@@ -763,8 +891,8 @@ ggplot(data = df, aes(x = method, y = Rank, fill = factor(class))) +
     labels = c("WN", "RW", "RWD", "STL-AR", "Snaive", "auto.arima", "ets", "Theta", "RF-class priors", "RF-unbalanced")
   ) + scale_fill_brewer(
     breaks = c(1, 0),
-    labels = c("Experiment 1 (new: M3)", "Experiment 2 (new: M1)")
-    , palette = "Set1"
+    labels = c("Experiment 1 (new: M3)", "Experiment 2 (new: M1)"),
+    palette = "Set1"
   ) +
   theme(
     axis.title.y = element_blank(), legend.title = element_blank(),
