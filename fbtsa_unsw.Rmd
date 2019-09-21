@@ -3,6 +3,7 @@ title: "Feature-based time series analysis"
 date: "27 September 2019"
 author: "Rob J Hyndman"
 toc: true
+titlefontsize: 28pt
 output:
   binb::monash:
     colortheme: monashwhite
@@ -41,17 +42,54 @@ gghist <- function(data, mapping, ...) {
     geom_density(col = NA, fill = "#cc5900", bw = bw)
   return(p)
 }
+# Function to produce very basic table, no lines or headings
+baretable <- function(tbl, digits = 0,
+                      include.colnames=FALSE, include.rownames=FALSE,
+                      hline.after=NULL,
+                      size = getOption("xtable.size", NULL),
+                      add.to.row =  getOption("xtable.add.to.row", NULL),
+                      ...) {
+  tbl %>%
+    xtable::xtable(digits = digits, ...) %>%
+    print(
+      include.colnames = include.colnames,
+      include.rownames = include.rownames,
+      hline.after = hline.after,
+      comment = FALSE,
+      latex.environments = NULL,
+      floating = FALSE,
+      size=size,
+      add.to.row=add.to.row,
+      sanitize.text.function = function(x) {
+        x
+      }
+    )
+}
 set.seed(20190927)
 options(digits = 3, width = 63)
 ```
 
-# Visualization
+# Feature-based visualization
 
-## M3 competition
+## M3 competition: 2000
 \full{M3paper}
 \only<2>{
 \placefig{1}{4}{height=3cm, width=10cm, keepaspectratio=true}{SMakridakis}
 \placefig{8.8}{4}{height=3cm, width=10cm, keepaspectratio=true}{MHibon}}
+
+
+## M3 competition: 2000
+\fontsize{13}{14}\sf
+\begin{block}{}
+``The M3-Competition is a final attempt by the authors to settle the accuracy issue of
+various time series methods\dots\ The extension involves the inclusion of more methods/ researchers (in particular in the areas of neural networks and expert systems) and more series.''
+\end{block}
+
+  * 3003 series
+  * All data from business, demography, finance and economics.
+  * Series length between 14 and 126.
+  * Either non-seasonal, monthly or quarterly.
+  * All time series positive.
 
 ## How to plot lots of time series?
 
@@ -155,7 +193,7 @@ Called ``features'' in the machine learning literature.
 \begin{alertblock}{}
 \centerline{$Y_t = S_t + T_t + R_t$\qquad $S_{t}$ is periodic with mean 0}
 \end{alertblock}
-  
+
 ```{r stl, fig.height=4.7}
 m3monthly %>%
   filter(sn == "N2096") %>%
@@ -643,29 +681,6 @@ tourism
 \begin{block}{}\fontsize{10}{10}\sf Domestic visitor nights in thousands by state/region and purpose.\phantom{dg}\end{block}
 \end{textblock}}
 
-## Holidays by state
-
-\fontsize{9}{10}\sf
-
-```r
-holidays <- tourism %>%
-  filter(Purpose=="Holiday") %>%
-  group_by(State) %>%
-  summarise(Trips = sum(Trips))
-```
-
-```{r, echo=FALSE}
-holidays
-```
-
-## Decompositions
-\fontsize{9}{10}\sf
-
-```{r dcmp-plot, echo=TRUE}
-holidays %>% STL(Trips ~ season(window = "periodic")) %>%
-  autoplot()
-```
-
 ## Feature extraction and statistics
 
 \fontsize{9}{10}\sf
@@ -779,7 +794,7 @@ pcs <- tourism_features %>% select(-State, -Region, -Purpose) %>%
   prcomp(scale=TRUE) %>% augment(tourism_features)
 ```
 
-```{r echo=FALSE}
+```{r pcatable2, echo=FALSE, dependson='pcatable'}
 pcs
 ```
 
@@ -844,9 +859,8 @@ pcs %>% ggplot(aes(x=.fittedPC1, y=.fittedPC2, col=Purpose)) +
 ## Feature extraction and statistics
 \fontsize{9}{9}\sf
 
-```{r outliers2, fig.height=3.4}
-pcs %>%
-  filter(.fittedPC1 == max(.fittedPC1)) %>%
+```{r outliers2, fig.height=3.4, echo=TRUE}
+pcs %>% filter(.fittedPC1 == max(.fittedPC1)) %>%
   left_join(tourism, by = c("State", "Region", "Purpose")) %>%
   ggplot(aes(x = Quarter, y = Trips)) +
     geom_line() +
@@ -858,9 +872,8 @@ pcs %>%
 ## Feature extraction and statistics
 \fontsize{9}{9}\sf
 
-```{r outliers3, fig.height=3.4}
-pcs %>%
-  filter(.fittedPC1 > 10 & .fittedPC2 > 2.5) %>%
+```{r outliers3, fig.height=3.4, echo=TRUE}
+pcs %>% filter(.fittedPC1 > 10 & .fittedPC2 > 2.5) %>%
   left_join(tourism, by = c("State", "Region", "Purpose")) %>%
   ggplot(aes(x = Quarter, y = Trips)) +
     geom_line() +
@@ -869,7 +882,7 @@ pcs %>%
     theme(legend.position = "none")
 ```
 
-# Anomaly detection
+# Feature-based anomaly detection
 
 ## Yahoo server metrics
 \fontsize{13}{15}\sf\vspace*{-0.2cm}
@@ -936,7 +949,7 @@ p1/p2/p3/p4
        where $P$ and $Q$ are estimated by kernel density estimators applied to
        consecutive windows of size 48.
 * **Change index**: Time of maximum KL score
-    
+
 ## Feature space
 \fontsize{11}{11}\sf
 
@@ -1017,13 +1030,49 @@ hdrcde::hdrscatterplot(hwl_pca$.fittedPC1, hwl_pca$.fittedPC2, noutliers = 5) + 
 \end{alertblock}
 \end{textblock}
 
-# Forecast model selection
+# Feature-based forecasting
 
-## Forecast model selection
+## M competition: 1982
 
-\alert{Features used to select a forecasting model}\vspace*{10cm}
+\placefig{0.1}{1.4}{height=8.2cm,width=10cm}{M1}
 
-\begin{textblock}{12}(0.1,2.1)\small
+
+\begin{textblock}{5.5}(6.5,2)
+  \begin{block}{M-competition}
+  \begin{itemize}
+  \item 1001 series from demography, industry, economics.
+  \item Annual, quarterly, monthly data.
+  \item Anyone could submit forecasts.
+  \item Multiple forecast measures used.
+  \end{itemize}
+  \end{block}
+\end{textblock}
+
+## M3 competition: 2000
+
+\full{M3paper}
+
+## M4 competition: 2018
+
+\full{m4}
+
+## M4 competition: 2018
+
+ * January -- May 2018
+ * 100,000 time series: yearly, quarterly, monthly, weekly, daily, hourly.
+ * Point forecast and prediction intervals assessed.
+ * Code must be public
+ * 248 registrations, 50 submissions.
+
+\pause
+
+### Winning methods
+ 1. Hybrid of Recurrent Neural Network and Exponential Smoothing models
+ 2. FFORMA: Feature-based forecast combinations using xgboost to find weights
+
+## Features used to select a forecasting model
+
+\begin{textblock}{12}(0.1,1.3)\small
 \begin{multicols}{2}
   \begin{itemize}\tightlist
     \item length
@@ -1034,18 +1083,28 @@ hdrcde::hdrscatterplot(hwl_pca$.fittedPC1, hwl_pca$.fittedPC2, noutliers = 5) + 
     \item spikiness
     \item stability
     \item lumpiness
-    \item first ACF value of remainder series
     \item parameter estimates of Holt's linear trend method
     \item spectral entropy
     \item Hurst exponent
     \item nonlinearity
     \item parameter estimates of Holt-Winters' additive method
     \item unit root test statistics
-    \item first ACF value of residual series of linear trend model
-    \item ACF and PACF based features - calculated on both the raw and differenced series
+    \item crossing points, flat spots
+    \item peaks, troughs
+    \item ACF and PACF based features - calculated on raw, differenced, and remainder series.
+    \item ARCH/GARCH statistics and ACF of squared series and residuals.
     \end{itemize}
 \end{multicols}
 \end{textblock}
+
+## Features used to select a forecasting model
+
+\alert{Why these features?}
+
+ * Hyndman, Wang and Laptev. “Large scale unusual time series detection” (ICDM 2015).
+ * Kang, Hyndman & Smith-Miles. “Visualising forecasting algorithm performance using time series instance spaces” (IJF 2017).
+ * Talagala, Hyndman and Athanasopoulos. “Meta-learning how to forecast time series” (2018).
+ * Implemented in the **feasts** R package
 
 ## \fontsize{16}{16}\bf\sffamily FFORMS: Feature-based FORecast Model Selection
 
@@ -1088,6 +1147,29 @@ Simulated series &        & 1290000 & 1512000 & 285600 \\
 New series       & M1     & 181     & 203     & 617
 \end{tabular}
 \end{block}
+
+## \fontsize{14}{14}\bf\sffamily Experiment 1: Distribution of time series in PCA space
+
+\colorbox{black}{\color{white}{observed - M1}}
+
+  \centerline{\includegraphics[width=\textwidth,height=7.5cm,keepaspectratio]{observed.pdf}}
+
+## \fontsize{14}{14}\bf\sffamily Experiment 1: Distribution of time series in PCA space
+
+\colorbox{black}{\color{white}{observed - M1}}\colorbox{ao(english)}{simulated}
+
+  \centerline{\includegraphics[width=\textwidth,height=7.5cm,keepaspectratio]{simulated.pdf}}
+
+## \fontsize{14}{14}\bf\sffamily Experiment 1: Distribution of time series in PCA space
+
+\colorbox{black}{\color{white}{observed - M1}}\colorbox{ao(english)}{simulated}\colorbox{orange}{new - M3}
+  \centerline{\includegraphics[width=\textwidth,height=7.5cm,keepaspectratio]{exp1pca-1.pdf}}
+
+
+## \fontsize{14}{14}\bf\sffamily Experiment 2: Distribution of time series in PCA space
+
+\colorbox{black}{\color{white}{observed - M3}} \colorbox{ao(english)}{simulated} \colorbox{aureolin}{subset} \colorbox{orange}{new - M1}
+  \centerline{\includegraphics[width=\textwidth,height=7.5cm,keepaspectratio]{exp2pca-1.pdf}}
 
 ## Results: Yearly
 
@@ -1178,15 +1260,13 @@ ggplot(data = df, aes(x = method, y = Rank, fill = factor(class))) +
   )
 ```
 
-# Foreast model averaging
+## \fontsize{15}{15}\bf\sffamily FFORMA: Feature-based FORecast Model Averaging
 
-## \fontsize{15}{15}\sffamily\bfseries FFORMA: Feature-based FORecast Model Averaging
-
- * Like FFORMS but we use gradient boosted trees rather than a random forest.
- * The optimization criterion is forecast accuracy not classification accuracy.
- * The probability of each model being best is used to construct a model weight.
- * A combination forecast is produced using these weights.
- * \alert{Came second in the M4 forecasting competition}
+ * Like FFORMS but using gradient boosted trees (xgboost) rather than random forest.
+ * Trained on temporal holdout version of M4 dataset, where size of test sets equal to required forecast horizons
+ * Optimization criterion: forecast accuracy not classification accuracy.
+ * Probability of each model being best is used to construct model weights for combination forecast.
+ * 5 days computing time.
 
 ## \fontsize{15}{15}\sffamily\bfseries FFORMA: Feature-based FORecast Model Averaging
 
@@ -1199,34 +1279,59 @@ ggplot(data = df, aes(x = method, y = Rank, fill = factor(class))) +
 1. ARIMA
 1. ETS
 1. TBATS
-1. STLM-AR
-1. NNAR
+1. STL decomposition with AR for seasonally adjusted series
+1. Neural network autoregression
 
-## R Packages
-\fontsize{14.5}{19}\sf
+## \fontsize{15}{15}\bf\sffamily FFORMA: Feature-based FORecast Model Averaging
 
- * \alert{seer}: FFORMS --- selecting forecasting model using features. \newline\url{github.com/thiyangt/seer}\vspace*{0.5cm}
+\placefig{0.2}{1.4}{width=12.4cm, trim=0 0 0 70, clip=true}{fforma_graphic}
 
- * \alert{M4metalearning}: FFORMA -- forecast combinations using features to choose weights. \newline\url{github.com/robjhyndman/M4metalearning}
+
+\vspace*{5.2cm}
+
+### M4 competition results (based on average OWA)
+
+```{r, results='asis'}
+tribble(
+    ~Place, ~OWA, ~Method,
+    "1st", 0.821, NA,
+    "2nd", 0.838, "(FFORMA)",
+    "3rd", 0.841, NA
+  ) %>%
+  baretable(digits=3)
+```
+
+
+## \fontsize{15}{15}\bf\sffamily FFORMA: Feature-based FORecast Model Averaging
+
+\only<1>{\placefig{0.2}{1.4}{width=12.4cm, trim=0 0 0 0, clip=true}{prototypes}}
+\only<2>{\placefig{0.2}{1.4}{width=12.4cm, trim=0 0 0 0, clip=true}{prototype1}}
+\only<3>{\placefig{0.2}{1.4}{width=12.4cm, trim=0 0 0 0, clip=true}{prototype2}}
+\only<4>{\placefig{0.2}{1.4}{width=12.4cm, trim=0 0 0 0, clip=true}{prototype3}}
+\only<5>{\placefig{0.2}{1.4}{width=12.4cm, trim=0 0 0 0, clip=true}{prototype4}}
+\only<6>{\placefig{0.2}{1.4}{width=12.4cm, trim=0 0 0 0, clip=true}{prototype5}}
 
 ## Acknowledgments
 
 \begin{textblock}{12.5}(0.2,1.2)
 \begin{block}{}\fontsize{9}{10}\sf
-\centering\begin{tabular}{p{3.4cm}p{3.4cm}p{3.5cm}}
+\centering\begin{tabular}{p{2.6cm}p{2.3cm}p{2.9cm}l}
 \includegraphics[height=2cm, width=10cm, keepaspectratio]{dilini} &
+\includegraphics[height=2cm, width=10cm, keepaspectratio]{earowang}&
 \includegraphics[height=2cm, width=10cm, keepaspectratio]{kate} &
 \includegraphics[height=2cm, width=10cm, keepaspectratio]{george}\\
-Dilini Talagala  & Kate Smith-Miles & George Athanasopoulos \\
-\includegraphics[height=2cm, width=10cm, keepaspectratio]{earowang} &
+Dilini Talagala  & Earo Wang & Kate Smith-Miles & George Athanasopoulos \\
 \includegraphics[height=2cm, width=10cm, keepaspectratio]{thiyanga} &
-\includegraphics[height=2cm, width=10cm, keepaspectratio]{pablo}\\
-Earo Wang & Thiyanga Talagala & Pablo Montero-Manso\\
+\includegraphics[height=2cm, width=10cm, keepaspectratio]{yanfei} &
 \includegraphics[height=2cm, width=10cm, keepaspectratio]{mitch} &
-\includegraphics[height=2cm, width=10cm, keepaspectratio]{yanfei}&
-\includegraphics[height=2cm, width=10cm, keepaspectratio]{shanika}\\
-Mitchell \rlap{O'Hara-Wild} & Yanfei Kang & Shanika Wickramasuriya
+\includegraphics[height=2cm, width=10cm, keepaspectratio]{pablo} \\
+Thiyanga Talagala & Yanfei Kang & Mitchell O'Hara-Wild & Pablo Montero-Manso
  \end{tabular}
 \end{block}
 \end{textblock}
 
+\begin{textblock}{10}(1.6,7.8)
+\begin{alertblock}{Papers}
+Available from \url{robjhyndman.com}
+\end{alertblock}
+\end{textblock}
