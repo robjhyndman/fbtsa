@@ -9,3 +9,4 @@ fbtsa.tex
 *.vrb
 .RData
 .Rhistory
+.Rproj.user

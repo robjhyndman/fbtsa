@@ -2,15 +2,17 @@
 title: "Feature-based time series analysis"
 date: "2/3 February 2022"
 author: "Rob J Hyndman"
+fontsize: 14pt
+classoption: aspectratio=169
 toc: true
 titlefontsize: 28pt
 output:
   binb::monash:
+    fig_height: 3.5
+    fig_width: 7.5
     colortheme: monashwhite
-    fig_width: 8
-    fig_height: 5
+    keep_tex: no
     highlight: tango
-    keep_tex: yes
     includes:
       in_header: preamble.tex
 ---
@@ -71,8 +73,8 @@ options(digits = 3, width = 63)
 ## M3 competition: 2000
 \full{M3paper}
 \only<2>{
-\placefig{1}{4}{height=3cm, width=10cm, keepaspectratio=true}{SMakridakis}
-\placefig{8.8}{4}{height=3cm, width=10cm, keepaspectratio=true}{MHibon}}
+\placefig{2}{5}{height=3cm, width=10cm, keepaspectratio=true}{SMakridakis}
+\placefig{11}{5}{height=3cm, width=10cm, keepaspectratio=true}{MHibon}}
 
 
 ## M3 competition: 2000
@@ -156,8 +158,9 @@ for (i in files) {
 \only<14>{\full{M3data3003}}
 
 ## Key idea
-\placefig{9.1}{.5}{width=3.6cm}{tukey}
-\begin{textblock}{3}(9.7,5.4)\small\textit{John W Tukey}\end{textblock}
+\fontsize{13}{14}\sf
+\placefig{11.1}{.5}{width=4.3cm}{tukey}
+\begin{textblock}{3}(12.7,6.4)\small\textit{John W Tukey}\end{textblock}
 \begin{textblock}{8}(0.7,1.2)
 \begin{alertblock}{Cognostics}
 Computer-produced diagnostics\\ (Tukey and Tukey, 1985).
@@ -175,7 +178,7 @@ Computer-produced diagnostics\\ (Tukey and Tukey, 1985).
 
 \vspace*{0.1cm}
 \begin{block}{}
-Called ``features'' in the machine learning literature and ``statistics'' in the statistics literature.
+Called ``features'' in the machine learning literature\\ and ``statistics'' in the statistics literature.
 \end{block}
 
 ## An STL decomposition: N2096
@@ -196,6 +199,7 @@ m3_monthly %>%
 ```
 
 ## Candidate features
+\fontsize{13}{14}\sf
 
 \begin{block}{STL decomposition}
 \centerline{$Y_t = S_t + T_t + R_t$}
@@ -206,8 +210,7 @@ m3_monthly %>%
 * Autocorrelations of data ($R_1,\dots,R_T$)
 * Strength of seasonality: $\max\left(0,1 - \frac{\Var(R_t)}{\Var(Y_t-T_t)}\right)$
 * Strength of trend:  $\max\left(0,1 - \frac{\Var(R_t)}{\Var(Y_t-S_t)}\right)$
-* Spectral entropy: $H = - \int_{-\pi}^{\pi} f_y(\lambda) \log f_y(\lambda) d\lambda$, where $f_y(\lambda)$ is spectral density of $Y_t$.\newline
-Low values of $H$ suggest a time series that is easier to forecast (more signal).
+* Spectral entropy: $H = - \int_{-\pi}^{\pi} f_y(\lambda) \log f_y(\lambda) d\lambda$, where $f_y(\lambda)$ is spectral density of $Y_t$. Low values of $H$ suggest a time series that is easier to forecast (more signal).
 * Optimal Box-Cox transformation of data
 
 ## Feature properties
@@ -232,32 +235,27 @@ For series with different lengths, scales, domains, etc., we need features that 
 For other analyses, it may be appropriate to have different requirements.
 
 ```{r m3_features}
-khs_stl <- function(x, period) {
-  output <- c(n = length(x), frequency = period, feat_spectral(x))
+# Use tsfeatures for consistency with KHS paper
+khs_stl <- function(x, period=1) {
+  x <- ts(x, frequency=period)
+  output <- c(n = length(x), frequency = period, tsfeatures::entropy(x))
   lambda <- forecast::BoxCox.lambda(ts(x, frequency = period),
     lower = 0, upper = 1, method = "loglik"
   )
-  stlfeatures <- feat_stl(box_cox(x, lambda),
-    .period = period,
-    s.window = "periodic", robust = TRUE
-  )
-  output <- c(output, stlfeatures, lambda = lambda)
-  if (period == 1L) {
-    output <- c(output, seasonal_strength = 0)
+  stlfeatures <- tsfeatures::stl_features(box_cox(x, lambda), s.window="periodic", robust=TRUE)
+  if(period == 1L) {
+    stlfeatures <- c(stlfeatures[c("trend","e_acf1")], seasonal_strength=0)
   }
-  return(output)
+  else {
+    stlfeatures <- stlfeatures[c("trend","e_acf1", "seasonal_strength")]
+  }
+  c(output, stlfeatures, lambda = lambda)
 }
 m3_features <- bind_rows(
     m3_yearly %>% features(value, features = khs_stl, period = 1),
-    m3_quarterly %>% features(value, features = khs_stl, period = 4) %>%
-      rename(seasonal_strength = seasonal_strength_4),
-    m3_monthly %>% features(value, features = khs_stl, period = 12) %>%
-      rename(seasonal_strength = seasonal_strength_12),
+    m3_quarterly %>% features(value, features = khs_stl, period = 4),
+    m3_monthly %>% features(value, features = khs_stl, period = 12),
     m3_other %>% features(value, features = khs_stl, period = 1)
-  ) %>%
-  select(
-    series_name, n, spectral_entropy, trend_strength, seasonal_strength,
-    frequency, stl_e_acf1, lambda
   )
 ```
 
@@ -319,14 +317,14 @@ m3_features %>% gghist(aes(x = seasonal_strength))
 ```
 
 \only<2->{
-\begin{textblock}{6}(0.2,3)
+\begin{textblock}{6}(0.4,3)
   \begin{alertblock}{Low Seasonality}
     \includegraphics[width=6cm]{seasonal_strengthLo.pdf}
   \end{alertblock}
 \end{textblock}
 }
 \only<3>{
-\begin{textblock}{6}(6.6,3)
+\begin{textblock}{6}(9.6,3)
   \begin{alertblock}{High Seasonality}
     \includegraphics[width=6cm]{seasonal_strengthHi.pdf}
   \end{alertblock}
@@ -336,20 +334,20 @@ m3_features %>% gghist(aes(x = seasonal_strength))
 ## Distribution of Trend for M3
 
 ```{r M3trend, dependson="M3Features"}
-m3_features %>% gghist(aes(x = trend_strength))
+m3_features %>% gghist(aes(x = trend))
 ```
 
 \only<2->{
-\begin{textblock}{6}(0.2,3)
+\begin{textblock}{6}(0.4,3)
   \begin{alertblock}{Low Trend}
-    \includegraphics[width=6cm]{trend_strengthLo.pdf}
+    \includegraphics[width=6cm]{trendLo.pdf}
   \end{alertblock}
 \end{textblock}
 }
 \only<3>{
-\begin{textblock}{6}(6.6,3)
+\begin{textblock}{6}(9.6,3)
   \begin{alertblock}{High Trend}
-    \includegraphics[width=6cm]{trend_strengthHi.pdf}
+    \includegraphics[width=6cm]{trendHi.pdf}
   \end{alertblock}
 \end{textblock}
 }
@@ -357,20 +355,20 @@ m3_features %>% gghist(aes(x = trend_strength))
 ## Distribution of Residual ACF1 for M3
 
 ```{r M3ACF1, dependson="M3Features"}
-m3_features %>% gghist(aes(x = stl_e_acf1))
+m3_features %>% gghist(aes(x = e_acf1))
 ```
 
 \only<2->{
-\begin{textblock}{6}(0.2,3)
+\begin{textblock}{6}(0.4,3)
   \begin{alertblock}{Low ACF1}
-    \includegraphics[width=6cm]{stl_e_acf1Lo.pdf}
+    \includegraphics[width=6cm]{e_acf1Lo.pdf}
   \end{alertblock}
 \end{textblock}
 }
 \only<3>{
-\begin{textblock}{6}(6.6,3)
+\begin{textblock}{6}(9.6,3)
   \begin{alertblock}{High ACF1}
-    \includegraphics[width=6cm]{stl_e_acf1Hi.pdf}
+    \includegraphics[width=6cm]{e_acf1Hi.pdf}
   \end{alertblock}
 \end{textblock}
 }
@@ -378,20 +376,20 @@ m3_features %>% gghist(aes(x = stl_e_acf1))
 ## Distribution of Spectral Entropy for M3
 
 ```{r M3entropy, dependson="M3Features"}
-m3_features %>% gghist(aes(x = spectral_entropy))
+m3_features %>% gghist(aes(x = entropy))
 ```
 
 \only<2->{
-\begin{textblock}{6}(0.2,3)
+\begin{textblock}{6}(0.4,3)
   \begin{alertblock}{Low Entropy}
-    \includegraphics[width=6cm]{spectral_entropyLo.pdf}
+    \includegraphics[width=6cm]{entropyLo.pdf}
   \end{alertblock}
 \end{textblock}
 }
 \only<3>{
-\begin{textblock}{6}(6.6,3)
+\begin{textblock}{6}(9.6,3)
   \begin{alertblock}{High Entropy}
-    \includegraphics[width=6cm]{spectral_entropyHi.pdf}
+    \includegraphics[width=6cm]{entropyHi.pdf}
   \end{alertblock}
 \end{textblock}
 }
@@ -400,7 +398,7 @@ m3_features %>% gghist(aes(x = spectral_entropy))
 
 ```{r ACF1SE, dependson="M3Features"}
 m3_features %>%
-  ggplot(aes(x = spectral_entropy, y = stl_e_acf1)) +
+  ggplot(aes(x = entropy, y = e_acf1)) +
   geom_point()
 ```
 
@@ -408,13 +406,13 @@ m3_features %>%
 
 ```{r TrendSE, dependson="M3Features"}
 m3_features %>%
-  ggplot(aes(x = spectral_entropy, y = trend_strength)) +
+  ggplot(aes(x = entropy, y = trend)) +
   geom_point()
 ```
 
 ## Feature distributions
 
-```{r M3pairs, dependson="M3Features", message=FALSE}
+```{r M3pairs, include=FALSE, dependson="M3Features"}
 library(GGally)
 # Fig 1 of paper
 yk_ggally_densityDiag <- wrap(gghist, adjust = 0.5)
@@ -424,7 +422,7 @@ yk_ggally_barDiag <- wrap(ggally_barDiag,
 )
 m3_features %>%
   mutate(period = as.character(frequency)) %>%
-  select(period, spectral_entropy, trend_strength, seasonal_strength, stl_e_acf1, lambda) %>%
+  select(period, entropy, trend, seasonal_strength, e_acf1, lambda) %>%
   GGally::ggpairs(
     diag = list(
       continuous = yk_ggally_densityDiag,
@@ -433,11 +431,13 @@ m3_features %>%
     axisLabels = "none",
     lower = list(continuous = wrap("points", alpha = 0.5, size = 0.2))
   ) -> p
-print(p)
-savepdf("PairwisePlot")
+#print(p)
+savepdf("PairwisePlot", width=18, height=18)
 print(p)
 endpdf()
 ```
+
+\centerline{\includegraphics[width=7.5cm, height=20cm]{PairwisePlot}}
 
 ## Dimension reduction for time series
 
@@ -461,7 +461,7 @@ endpdf()
 khs_pca <- m3_features %>%
   select(-series_name, -n) %>%
   prcomp(scale = TRUE)
-khs_pca$x[, 2] <- -khs_pca$x[, 2]
+#khs_pca$x[, 2] <- -khs_pca$x[, 2]
 khs_pca$rotation[, 2] <- -khs_pca$rotation[, 2]
 p <- khs_pca %>%
   broom::augment(m3_features) %>%
@@ -472,11 +472,11 @@ p1 <- p + geom_point(aes(color = factor(frequency))) +
   scale_color_viridis_d() + guides(colour = guide_legend("Frequency"))
 p2 <- p + geom_point(aes(color = seasonal_strength)) +
   scale_color_viridis_c() + guides(colour = guide_legend("Seasonality"))
-p3 <- p + geom_point(aes(color = trend_strength)) +
+p3 <- p + geom_point(aes(color = trend)) +
   scale_color_viridis_c() + guides(colour = guide_legend("Trend"))
-p4 <- p + geom_point(aes(color = spectral_entropy)) +
+p4 <- p + geom_point(aes(color = entropy)) +
   scale_color_viridis_c() + guides(colour = guide_legend("Entropy"))
-p5 <- p + geom_point(aes(color = stl_e_acf1)) +
+p5 <- p + geom_point(aes(color = e_acf1)) +
   scale_color_viridis_c() + guides(colour = guide_legend("R ACF1"))
 p6 <- p + geom_point(aes(color = lambda)) +
   scale_color_viridis_c() + guides(colour = guide_legend("Lambda"))
@@ -492,20 +492,20 @@ for(i in seq(6)) {
 }
 ```
 
-\only<1->{\placefig{0}{1.3}{width=4cm,height=8.3cm,trim=0 0 200 0,clip=TRUE}{M3sample}}
-\only<2->{\placefig{6}{1.3}{width=6cm}{PairwisePlot}}
-\only<3>{\placefig{5.2}{5.3}{width=4.5cm}{FeatureSpace}}
+\only<1->{\placefig{0}{1.5}{width=5cm,height=8.3cm,trim=50 50 200 50,clip=TRUE}{M3sample}}
+\only<2->{\placefig{8}{1.3}{width=6cm}{PairwisePlot}}
+\only<3>{\placefig{6.2}{5.3}{width=5cm, clip=true, trim=0 50 90 50}{FeatureSpace}}
 
-\only<2->{\placefig{4}{2}{width=2cm}{arrow}}
-\only<3>{\placefig{8.4}{4.2}{width=2cm,angle=-90}{arrow}}
+\only<2->{\placefig{5.5}{2}{width=2cm}{arrow}}
+\only<3>{\placefig{9.4}{4.8}{width=2cm,angle=-90}{arrow}}
 
-\only<2->{\begin{textblock}{2.1}(4,2.6)
+\only<2->{\begin{textblock}{2.1}(5.5,2.6)
 \begin{alertblock}{}\small
 Feature calculation
 \end{alertblock}
 \end{textblock}}
 
-\only<3->{\begin{textblock}{2.8}(9.7,4.1)
+\only<3->{\begin{textblock}{2.8}(10.7,5.1)
 \begin{alertblock}{}\small
 Principal component decomposition
 \end{alertblock}
@@ -513,7 +513,7 @@ Principal component decomposition
 
 ## M3 feature space
 
-\placefig{2}{2}{width=9cm}{FeatureSpace}
+\placefig{.5}{1.4}{height=7.8cm, width=20cm, clip=true, trim=0 50 0 50}{FeatureSpace}
 
 \begin{textblock}{4}(8.3,.5)
 \begin{block}{}\fontsize{12}{13}\sf
@@ -523,12 +523,12 @@ First two PCs explain 58.5\% of the variance.
 
 ## M3 feature space
 
-\only<1>{\placefig{2}{2}{width=9cm}{m3pca1}}
-\only<2>{\placefig{2}{2}{width=9cm}{m3pca2}}
-\only<3>{\placefig{2}{2}{width=9cm}{m3pca3}}
-\only<4>{\placefig{2}{2}{width=9cm}{m3pca4}}
-\only<5>{\placefig{2}{2}{width=9cm}{m3pca5}}
-\only<6>{\placefig{2}{2}{width=9cm}{m3pca6}}
+\only<1>{\placefig{.5}{1.4}{height=7.8cm, width=20cm, clip=true, trim=0 50 0 50}{m3pca1}}
+\only<2>{\placefig{.5}{1.4}{height=7.8cm, width=20cm, clip=true, trim=0 50 0 50}{m3pca2}}
+\only<3>{\placefig{.5}{1.4}{height=7.8cm, width=20cm, clip=true, trim=0 50 0 50}{m3pca3}}
+\only<4>{\placefig{.5}{1.4}{height=7.8cm, width=20cm, clip=true, trim=0 50 0 50}{m3pca4}}
+\only<5>{\placefig{.5}{1.4}{height=7.8cm, width=20cm, clip=true, trim=0 50 0 50}{m3pca5}}
+\only<6>{\placefig{.5}{1.4}{height=7.8cm, width=20cm, clip=true, trim=0 50 0 50}{m3pca6}}
 
 ## M3 feature space
 
@@ -585,11 +585,7 @@ We can use the feature space to:
 # R packages
 
 ```{r tourism, include=FALSE}
-knitr::opts_chunk$set(
-  echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE,
-  dev.args = list(pointsize = 11)
-)
-  tourism <- tourism %>%
+tourism <- tourism %>%
   mutate(
     State = recode(State,
                    "Australian Capital Territory" = "ACT",
@@ -615,10 +611,10 @@ holidays <- tourism %>%
 
 \begin{textblock}{3.8}(8,0)\begin{alertblock}{}\Large\textbf{tidyverts.org}\end{alertblock}\end{textblock}
 
-\placefig{1}{1.4}{width=4cm}{tsibble.png}
-\placefig{5}{1.4}{width=4cm}{tsibbledata.png}
-\placefig{3}{4.85}{width=4cm}{feasts.png}
-\placefig{7}{4.85}{width=4cm}{fable.png}
+\placefig{1}{1.4}{width=3.7cm}{tsibble.png}
+\placefig{5}{1.4}{width=3.7cm}{tsibbledata.png}
+\placefig{3}{4.75}{width=3.7cm}{feasts.png}
+\placefig{7}{4.75}{width=3.7cm}{fable.png}
 
 ## `tsibble` objects
 
@@ -656,13 +652,13 @@ tourism %>% features(Trips, feature_set(tags="stl"))
 ## Feature extraction and statistics
 \fontsize{8}{9}\sf
 
-```{r features-plot, fig.height=4.6, echo=TRUE}
+```{r features-plot, fig.height=3, fig.asp=0.42, echo=TRUE}
 tourism %>% features(Trips, feature_set(tags="stl")) %>%
   ggplot(aes(x=trend_strength, y=seasonal_strength_year, col=Purpose)) +
     geom_point() + facet_wrap(vars(State))
 ```
 
-\only<2->{\begin{textblock}{4.7}(7.8,7.3)
+\only<2->{\begin{textblock}{4.7}(9.8,7.3)
 \begin{alertblock}{}\fontsize{10}{10}\sf
 \begin{itemize}\tightlist
 \item Holidays more seasonal than other travel.
@@ -683,7 +679,7 @@ most_seasonal <- tourism %>%
 
 \pause\vspace*{-0.3cm}
 
-```{r extreme2, fig.height=3., echo=TRUE}
+```{r extreme2, fig.height=2.1, echo=TRUE}
 tourism %>%
   right_join(most_seasonal, by = c("State","Region","Purpose")) %>%
   ggplot(aes(x = Quarter, y = Trips)) + geom_line() +
@@ -823,7 +819,7 @@ pcs %>% ggplot(aes(x=.fittedPC1, y=.fittedPC2, col=Purpose)) +
 ## Feature extraction and statistics
 \fontsize{9}{9}\sf
 
-```{r outliers2, fig.height=3.4, echo=TRUE}
+```{r outliers2, fig.height=2.4, echo=TRUE}
 pcs %>% filter(.fittedPC1 == max(.fittedPC1)) %>%
   left_join(tourism, by = c("State", "Region", "Purpose")) %>%
   ggplot(aes(x = Quarter, y = Trips)) +
@@ -836,7 +832,7 @@ pcs %>% filter(.fittedPC1 == max(.fittedPC1)) %>%
 ## Feature extraction and statistics
 \fontsize{9}{9}\sf
 
-```{r outliers3, fig.height=3.4, echo=TRUE}
+```{r outliers3, fig.height=2.4, echo=TRUE}
 pcs %>% filter(.fittedPC1 > 10 & .fittedPC2 > 2.5) %>%
   left_join(tourism, by = c("State", "Region", "Purpose")) %>%
   ggplot(aes(x = Quarter, y = Trips)) +
@@ -875,28 +871,22 @@ yahoo <- tsfeatures::yahoo_data() %>%
 ```
 
 ```{r yahoodataplot, echo=FALSE, dependson='yahoodata'}
-random_yahoo <- function() {
-  yahoo %>%
-    filter(
-      Time < hms::hms(day = 30, hour = 0),
-      key %in% sample(unique(key), 1)
-    ) %>%
-    autoplot(value) +
-    scale_x_time(
-      breaks = 24 * 60 * 60 * seq(0, 50, by = 2),
-      labels = seq(0, 50, by = 2)) +
-    xlab("Day")
-}
-p1 <- random_yahoo()
-p2 <- random_yahoo()
-p3 <- random_yahoo()
-p4 <- random_yahoo()
-
-p1/p2/p3/p4
+yahoo %>%
+  filter(
+    Time < hms::hms(day = 30, hour = 0),
+    key %in% sample(unique(key), 4)
+  ) %>%
+  ggplot(aes(x=Time, y=value, group=key)) +
+  geom_line() +
+  facet_grid(key ~ ., scales = "free_y") +
+  scale_x_time(
+    breaks = 24 * 60 * 60 * seq(0, 50, by = 2),
+    labels = seq(0, 50, by = 2)) +
+  xlab("Day")
 ```
 
 ## Yahoo server metrics
-\fontsize{11}{11.8}\sf\vspace*{-0.2cm}
+\fontsize{10}{11}\sf\vspace*{-0.2cm}
 
 * **ACF1**: first order autocorrelation = $\text{Corr}(Y_t,Y_{t-1})$
 * Strength of **trend** and **seasonality** based on STL
@@ -972,7 +962,7 @@ yahoo_features %>%
   factoextra::fviz_pca_biplot(geom = "point", col.ind = "gray")
 ```
 
-\only<2>{\begin{textblock}{4.8}(7.6,5.3)\fontsize{11}{11}\sf
+\only<2>{\begin{textblock}{4.8}(10.8,4.6)\fontsize{11}{11}\sf
 \begin{alertblock}{\fontsize{11}{11}\sffamily What is ``anomalous''?}
 \begin{itemize}\tightlist
 \item We need a measure of the ``anomalousness'' of a time series.
@@ -988,7 +978,7 @@ yahoo_features %>%
 hdrcde::hdrscatterplot(hwl_pca$.fittedPC1, hwl_pca$.fittedPC2, noutliers = 5) + xlab(".fittedPC1") + ylab(".fittedPC2")
 ```
 
-\begin{textblock}{4.8}(7.7,6.9)\fontsize{10}{10}\sf
+\begin{textblock}{4.8}(10.8,6.2)\fontsize{10}{10}\sf
 \begin{alertblock}{\fontsize{10}{10}\sffamily Highest Density Regions}
 \begin{itemize}\tightlist
 \item Estimate using \texttt{hdrcde} package
